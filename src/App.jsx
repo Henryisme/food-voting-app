@@ -17,15 +17,8 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 為了避免預覽環境報錯，這裡暫時不使用 import.meta.env
-// 若您在 Vercel 部署，請手動將您的 API Key 填入下方的引號中，或取消註解下方的 import.meta 写法
-// 使用這兩行來自動讀取 .env 或 Vercel 的設定
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
-
-// 上面原本那兩行空的可以刪掉
-// const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-// const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -112,9 +105,6 @@ const StarRating = ({ rating }) => (
 
 // 計算交通時間
 const calculateTravelTime = (meters) => {
-  // 走路: 5 km/h = ~83 m/min
-  // 騎車: 15 km/h = ~250 m/min
-  // 開車: 30 km/h (市區均速) = ~500 m/min
   const walk = Math.ceil(meters / 83);
   const bike = Math.ceil(meters / 250);
   const car = Math.ceil(meters / 500);
@@ -134,15 +124,13 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
     }
     if (!mapRef.current) return;
 
-    // 初始化地圖
     const map = new window.google.maps.Map(mapRef.current, {
       center: initialLocation,
       zoom: 15,
-      disableDefaultUI: true, // 簡化介面
+      disableDefaultUI: true, 
       clickableIcons: false
     });
 
-    // 初始化圖釘
     const marker = new window.google.maps.Marker({
       position: initialLocation,
       map: map,
@@ -151,7 +139,6 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
       title: "拖曳我來修改位置"
     });
 
-    // 監聽點擊地圖事件
     map.addListener("click", (e) => {
       const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       marker.setPosition(newLoc);
@@ -159,7 +146,6 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
       map.panTo(newLoc);
     });
 
-    // 監聽拖曳結束事件
     marker.addListener("dragend", (e) => {
       const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       setSelectedLoc(newLoc);
@@ -179,7 +165,6 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         </button>
       </div>
       
-      {/* Google Map Container */}
       <div className="flex-1 relative bg-gray-100 flex items-center justify-center">
         {mapError ? (
             <div className="text-center p-6 bg-white rounded-xl shadow-sm">
@@ -191,7 +176,6 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
             <div ref={mapRef} className="w-full h-full" />
         )}
         
-        {/* Helper Text */}
         {!mapError && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-gray-600 shadow-sm pointer-events-none">
             點擊地圖或拖曳紅點來移動
@@ -231,12 +215,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   
-  // 地理位置
   const [realLocation, setRealLocation] = useState(null);
   const [virtualLocation, setVirtualLocation] = useState(null);
   const [isMapMode, setIsMapMode] = useState(false);
 
-  // User Profile
   const [userProfile, setUserProfile] = useState({
     name: '美食探險家',
     gender: 'male', 
@@ -244,12 +226,10 @@ export default function App() {
   });
   const [showProfileModal, setShowProfileModal] = useState(false);
 
-  // Social / Room State
   const [room, setRoom] = useState(null); 
   const [messages, setMessages] = useState([]); 
   const [joinCodeInput, setJoinCodeInput] = useState('');
   
-  // 搜尋設定
   const [timeFilter, setTimeFilter] = useState('lunch'); 
   const [distFilter, setDistFilter] = useState(500); 
   const [ratingFilter, setRatingFilter] = useState('all');
@@ -260,12 +240,10 @@ export default function App() {
   const [shortlist, setShortlist] = useState([]); 
   const [isGoogleMapsReady, setIsGoogleMapsReady] = useState(false);
   
-  // UI State
   const [showDetail, setShowDetail] = useState(null);
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
 
-  // 初始化
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomCodeFromUrl = urlParams.get('room');
@@ -304,12 +282,10 @@ export default function App() {
     }
   }, []);
 
-  // 更新交通時間
   useEffect(() => {
     setTravelTimes(calculateTravelTime(distFilter));
   }, [distFilter]);
 
-  // Firebase Room Sync
   useEffect(() => {
     if (!db || !room?.id) return;
     const q = query(collection(db, "rooms", room.id, "messages"), orderBy("createdAt", "asc"));
@@ -322,8 +298,7 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    // 修正：使用更明確的種子碼 (Jack=男, Maria=女)
-    const seed = userProfile.gender === 'male' ? 'Jack' : 'Maria'; 
+    const seed = userProfile.gender === 'male' ? 'Felix' : 'Aneka'; 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
 
@@ -356,7 +331,12 @@ export default function App() {
         setRoom({ id: roomRef.id, code, name: roomName });
       } catch (e) {
         console.error("建立房間失敗", e);
-        alert(`建立房間失敗 (Firebase Error)。\n錯誤訊息：${e.message}`);
+        // 優化錯誤提示，明確指出是權限問題
+        if (e.code === 'permission-denied') {
+            alert(`建立房間失敗：權限不足。\n請到 Firebase Console -> Firestore -> Rules 將規則改為 "allow read, write: if true;"`);
+        } else {
+            alert(`建立房間失敗：${e.message}\n請確認 Firebase 已啟用計費功能。`);
+        }
       }
     } else {
       const newRoom = { id: Date.now().toString(), code, name: roomName };
@@ -385,7 +365,11 @@ export default function App() {
         }
       } catch (e) {
         console.error(e);
-        alert(`加入失敗：${e.message}`);
+        if (e.code === 'permission-denied') {
+            alert(`加入失敗：權限不足。\n請檢查 Firebase Rules 設定。`);
+        } else {
+            alert(`加入失敗：${e.message}`);
+        }
       }
     } else {
       const joinedRoom = { id: Date.now().toString(), code: joinCodeInput, name: `美食團 ${joinCodeInput}` };
@@ -496,7 +480,16 @@ export default function App() {
       keyword: keyword 
     };
 
+    // 加入 5 秒逾時機制，避免一直轉圈
+    const timeoutId = setTimeout(() => {
+        if (loading) {
+            setLoading(false);
+            setErrorMsg("搜尋逾時。請確認 API Key 是否啟用 'Places API' 權限。");
+        }
+    }, 5000);
+
     service.nearbySearch(request, (results, status) => {
+      clearTimeout(timeoutId); // 清除逾時設定
       if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
         let formatted = results.map(place => ({
           id: place.place_id,
@@ -526,8 +519,8 @@ export default function App() {
         setRestaurants(formatted);
       } else {
         console.error("Google Maps Search Failed:", status);
-        setErrorMsg("搜尋失敗。原因：" + status);
-        // 不再切換回模擬數據，只顯示錯誤
+        // 顯示具體錯誤原因
+        setErrorMsg(`搜尋失敗 (${status})。請檢查 GCP 後台是否啟用 Places API。`);
         setRestaurants([]);
       }
       setLoading(false);
