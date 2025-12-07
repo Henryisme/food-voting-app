@@ -17,9 +17,9 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
+// 請直接填入您的 Key，確保功能正常
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
-
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
@@ -124,33 +124,37 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
     }
     if (!mapRef.current) return;
 
-    const map = new window.google.maps.Map(mapRef.current, {
-      center: initialLocation,
-      zoom: 15,
-      disableDefaultUI: true, 
-      clickableIcons: false
-    });
+    try {
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: initialLocation,
+        zoom: 15,
+        disableDefaultUI: true, 
+        clickableIcons: false
+      });
 
-    const marker = new window.google.maps.Marker({
-      position: initialLocation,
-      map: map,
-      draggable: true,
-      animation: window.google.maps.Animation.DROP,
-      title: "拖曳我來修改位置"
-    });
+      const marker = new window.google.maps.Marker({
+        position: initialLocation,
+        map: map,
+        draggable: true,
+        animation: window.google.maps.Animation.DROP,
+        title: "拖曳我來修改位置"
+      });
 
-    map.addListener("click", (e) => {
-      const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      marker.setPosition(newLoc);
-      setSelectedLoc(newLoc);
-      map.panTo(newLoc);
-    });
+      map.addListener("click", (e) => {
+        const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        marker.setPosition(newLoc);
+        setSelectedLoc(newLoc);
+        map.panTo(newLoc);
+      });
 
-    marker.addListener("dragend", (e) => {
-      const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      setSelectedLoc(newLoc);
-      map.panTo(newLoc);
-    });
+      marker.addListener("dragend", (e) => {
+        const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        setSelectedLoc(newLoc);
+        map.panTo(newLoc);
+      });
+    } catch (e) {
+      setMapError("地圖載入發生錯誤：" + e.message);
+    }
 
   }, []);
 
@@ -298,7 +302,9 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    const seed = userProfile.gender === 'male' ? 'Felix' : 'Aneka'; 
+    // 💡 修正：依您的要求交換了性別對應 (男=Maria, 女=Felix)
+    // 雖然名字看起來相反，但這是為了符合您說的「圖片顯示」需求
+    const seed = userProfile.gender === 'male' ? 'Maria' : 'Felix'; 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
 
@@ -331,7 +337,6 @@ export default function App() {
         setRoom({ id: roomRef.id, code, name: roomName });
       } catch (e) {
         console.error("建立房間失敗", e);
-        // 優化錯誤提示，明確指出是權限問題
         if (e.code === 'permission-denied') {
             alert(`建立房間失敗：權限不足。\n請到 Firebase Console -> Firestore -> Rules 將規則改為 "allow read, write: if true;"`);
         } else {
@@ -480,16 +485,17 @@ export default function App() {
       keyword: keyword 
     };
 
-    // 加入 5 秒逾時機制，避免一直轉圈
+    // 🔥 修正：強制 5 秒逾時檢查，防止轉圈圈卡死
+    // 這裡不依賴 loading 狀態變數，而是直接設定一個定時炸彈
     const timeoutId = setTimeout(() => {
-        if (loading) {
-            setLoading(false);
-            setErrorMsg("搜尋逾時。請確認 API Key 是否啟用 'Places API' 權限。");
-        }
+        setLoading(false);
+        setErrorMsg("搜尋逾時 (5秒)。請確認 GCP 後台已啟用 'Places API' 且已連結計費帳戶。");
     }, 5000);
 
     service.nearbySearch(request, (results, status) => {
-      clearTimeout(timeoutId); // 清除逾時設定
+      // 搜尋回來了，立刻拆除定時炸彈
+      clearTimeout(timeoutId); 
+      
       if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
         let formatted = results.map(place => ({
           id: place.place_id,
@@ -519,8 +525,7 @@ export default function App() {
         setRestaurants(formatted);
       } else {
         console.error("Google Maps Search Failed:", status);
-        // 顯示具體錯誤原因
-        setErrorMsg(`搜尋失敗 (${status})。請檢查 GCP 後台是否啟用 Places API。`);
+        setErrorMsg(`搜尋失敗 (${status})。請檢查 GCP 後台設定。`);
         setRestaurants([]);
       }
       setLoading(false);
