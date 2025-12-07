@@ -63,7 +63,7 @@ const loadGoogleMapsScript = (apiKey) => {
   if (window.google && window.google.maps) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    // 加入 loading=async 並指定版本，確保載入正確
+    // 加入 loading=async 並指定版本
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&v=weekly`;
     script.async = true;
     script.defer = true;
@@ -94,7 +94,6 @@ const callGemini = async (prompt) => {
 
 const PriceDisplay = ({ level }) => (
   <div className="flex text-teal-500 text-[10px] font-bold bg-teal-50 px-1.5 py-0.5 rounded-full">
-    {/* 新版 API 可能回傳字串 enum，這裡做個簡單判斷 */}
     {typeof level === 'number' 
       ? [...Array(level)].map((_, i) => <span key={i}>$</span>) 
       : <span>{level === 'PRICE_LEVEL_EXPENSIVE' || level === 'PRICE_LEVEL_VERY_EXPENSIVE' ? '$$$' : '$$'}</span>
@@ -136,7 +135,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         zoom: 15,
         disableDefaultUI: true, 
         clickableIcons: false,
-        mapId: "DEMO_MAP_ID" // New API 建議加上 mapId，這裡用 Demo ID 避免報錯
+        mapId: "DEMO_MAP_ID" 
       });
 
       const marker = new window.google.maps.Marker({
@@ -480,8 +479,6 @@ export default function App() {
     isSearchingRef.current = true;
 
     try {
-        // 🔥 升級：使用 New Places API (Place.searchByText)
-        // 這需要 "Places API (New)" 權限，而非舊的 "Places API"
         const { Place } = await google.maps.importLibrary("places");
 
         let queryText = "restaurant";
@@ -489,7 +486,6 @@ export default function App() {
         if (timeFilter === 'lunch') queryText = "lunch restaurant";
         if (timeFilter === 'dinner') queryText = "dinner restaurant";
 
-        // 強制逾時機制
         const timeoutId = setTimeout(() => {
             if (isSearchingRef.current) {
                 isSearchingRef.current = false;
@@ -514,14 +510,13 @@ export default function App() {
         isSearchingRef.current = false;
 
         if (places && places.length > 0) {
-            const formatted = places.map(place => {
-                // Photo handling for New API
+            // 🔥 使用 Promise.all 來處理非同步的 isOpen() 查詢
+            const formatted = await Promise.all(places.map(async (place) => {
                 let photoUrl = null;
                 if (place.photos && place.photos.length > 0) {
                     photoUrl = place.photos[0].getURI({ maxWidth: 400 });
                 }
 
-                // Price Level handling (New API often returns string enums)
                 let pLevel = 2;
                 if (typeof place.priceLevel === 'string') {
                      if (place.priceLevel.includes('INEXPENSIVE')) pLevel = 1;
@@ -532,6 +527,16 @@ export default function App() {
                     pLevel = place.priceLevel;
                 }
 
+                // 修正 isOpen 取得方式
+                let isOpenStatus = null;
+                try {
+                    // New Places API: isOpen() 是一個非同步方法，必須 await
+                    isOpenStatus = await place.isOpen();
+                } catch(e) {
+                    // 如果無法判斷，則保持 null
+                    console.warn("Could not retrieve isOpen status", e);
+                }
+
                 return {
                     id: place.id,
                     name: place.displayName,
@@ -539,7 +544,7 @@ export default function App() {
                     rating: place.rating,
                     userRatingsTotal: place.userRatingCount,
                     priceLevel: pLevel,
-                    isOpen: place.regularOpeningHours ? place.regularOpeningHours.isOpen() : null,
+                    isOpen: isOpenStatus, // 正確填入狀態
                     lat: place.location.lat(),
                     lng: place.location.lng(),
                     distance: calculateDistance(
@@ -549,11 +554,10 @@ export default function App() {
                     address: place.formattedAddress,
                     photoUrl: photoUrl
                 };
-            });
+            }));
 
             let filtered = formatted;
             
-            // Client-side filtering for strict distance
             filtered = filtered.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
 
             if (ratingFilter !== 'all') {
@@ -573,11 +577,14 @@ export default function App() {
     } catch (err) {
         console.error("Search Error:", err);
         setLoading(false);
-        // 捕捉特定錯誤：Places API 未啟用
-        if (err.message && err.message.includes("IsNotAllowedError")) {
-             setErrorMsg("搜尋失敗：Places API (New) 未啟用。\n請到 GCP Console 啟用。");
+        const errorMsg = err.message || JSON.stringify(err);
+        
+        if (errorMsg.includes("Places API (New)") || errorMsg.includes("PERMISSION_DENIED")) {
+             setErrorMsg("【權限錯誤】Google Places API (New) 未啟用。\n\n請前往 Google Cloud Console 啟用 \"Places API (New)\"。\n(注意：不是舊版 Places API)。啟用後需等待幾分鐘才會生效。");
+        } else if (errorMsg.includes("IsNotAllowedError")) {
+             setErrorMsg("搜尋失敗：API Key 權限不足或未啟用 Places API (New)。");
         } else {
-             setErrorMsg("搜尋發生錯誤：" + err.message);
+             setErrorMsg("搜尋發生錯誤：" + errorMsg);
         }
     } finally {
         setLoading(false);
@@ -724,7 +731,7 @@ export default function App() {
            <div className="absolute bottom-4 left-4 text-white"><span className="bg-black/50 px-2 py-1 rounded text-xs backdrop-blur-md">{r.type}</span></div>
         </div>
         <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-          <div className="flex justify-between items-start mb-2"><h2 className="text-2xl font-black text-gray-800">{r.name}</h2><div className="flex flex-col items-end"><PriceDisplay level={r.priceLevel} /><span className={`text-[10px] mt-1 px-1.5 py-0.5 rounded ${r.isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{r.isOpen ? '營業中' : '休息中'}</span></div></div>
+          <div className="flex justify-between items-start mb-2"><h2 className="text-2xl font-black text-gray-800">{r.name}</h2><div className="flex flex-col items-end"><PriceDisplay level={r.priceLevel} /><span className={`text-[10px] mt-1 px-1.5 py-0.5 rounded ${r.isOpen !== null ? (r.isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') : 'bg-gray-100 text-gray-500'}`}>{r.isOpen !== null ? (r.isOpen ? '營業中' : '休息中') : '營業時間未知'}</span></div></div>
           <div className="flex items-center gap-2 mb-6 text-sm"><StarRating rating={r.rating} /> <span className="text-gray-400">({r.userRatingsTotal} 評論)</span></div>
           <div className="space-y-4">
              <div className="bg-gray-50 p-4 rounded-xl flex items-center gap-3"><MapPin className="text-gray-400" size={20} /><div className="flex-1"><p className="text-sm text-gray-800">{r.address}</p><p className="text-xs text-gray-400">距離 {r.distance} 公里</p></div><button onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)} className="bg-blue-600 text-white p-2 rounded-lg"><Navigation size={18} /></button></div>
