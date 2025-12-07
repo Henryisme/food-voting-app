@@ -3,7 +3,8 @@ import {
   MapPin, Star, Navigation, Shuffle, Utensils, Heart, Users, 
   Copy, Crown, Share2, Sparkles, X, Home, Settings, List, ChevronLeft, 
   Locate, Map, Send, AlertCircle, Clock, Filter, Search, ChevronDown, ArrowLeft,
-  MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon
+  MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
+  Bike, Car, Footprints
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -16,10 +17,17 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-const GOOGLE_MAPS_API_KEY = "AIzaSyB5QauPkcFt8Ye8ynEt7ciJVXFqeu_sbLI"; 
-const GEMINI_API_KEY = "AIzaSyD628iilaLN3ZvYlE_9WNTkWSsbeNCGFJ0";      
+// 為了避免預覽環境報錯，這裡暫時不使用 import.meta.env
+// 若您在 Vercel 部署，請手動將您的 API Key 填入下方的引號中，或取消註解下方的 import.meta 写法
+// 使用這兩行來自動讀取 .env 或 Vercel 的設定
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
 
-// 🔥 Firebase 設定 (請填入您的設定)
+// 上面原本那兩行空的可以刪掉
+// const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
+// const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
+
+// 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
   authDomain: "foodvotingapp.firebaseapp.com",
@@ -33,25 +41,19 @@ const FIREBASE_CONFIG = {
 // --- 初始化 Firebase ---
 let db = null;
 try {
-  if (FIREBASE_CONFIG.apiKey) {
+  if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.length > 10) {
     const app = initializeApp(FIREBASE_CONFIG);
     db = getFirestore(app);
     console.log("🔥 Firebase 已嘗試連線...");
+  } else {
+    console.log("⚠️ Firebase 設定為空，將使用單機模擬模式");
   }
 } catch (error) {
   console.error("Firebase 初始化失敗", error);
+  db = null;
 }
 
-// --- 模擬數據生成器 ---
-const NAMES_PREFIX = ["軟綿綿", "小確幸", "粉紅", "轉角", "喵喵", "彩虹", "陽光", "夢幻", "巷口", "深夜", "冠軍", "阿嬤"];
-const NAMES_SUFFIX = ["鬆餅屋", "咖哩飯", "漢堡包", "義麵坊", "小火鍋", "甜點店", "早午餐", "壽司屋", "牛肉麵", "燒肉", "牛排", "冰店"];
-const TYPES_BY_TIME = {
-  breakfast: ["早午餐", "甜點店", "台式小吃", "咖啡廳", "三明治"],
-  lunch: ["家常咖哩", "義麵坊", "牛肉麵", "壽司屋", "漢堡包", "台式小吃"],
-  dinner: ["小火鍋", "日式燒肉", "牛排", "義式料理", "壽司屋", "深夜食堂"]
-};
-const ALL_TYPES = [...new Set(Object.values(TYPES_BY_TIME).flat())];
-
+// --- 工具函數 ---
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -60,38 +62,6 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return (R * c).toFixed(2);
-};
-
-const generateMockRestaurants = (centerLat, centerLng, radiusMeters, timeFilter, ratingFilter) => {
-  const count = 30;
-  const radiusDeg = radiusMeters / 111000; 
-  const availableTypes = timeFilter === 'all' ? ALL_TYPES : TYPES_BY_TIME[timeFilter] || ALL_TYPES;
-
-  return Array.from({ length: count }).map((_, i) => {
-    const r = radiusDeg * Math.sqrt(Math.random());
-    const theta = Math.random() * 2 * Math.PI;
-    const latOffset = r * Math.cos(theta);
-    const lngOffset = r * Math.sin(theta);
-    const rating = (Math.random() * 2.5 + 2.5).toFixed(1);
-    
-    return {
-      id: `mock-${i}-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-      name: `${NAMES_PREFIX[Math.floor(Math.random() * NAMES_PREFIX.length)]}${NAMES_SUFFIX[Math.floor(Math.random() * NAMES_SUFFIX.length)]}`,
-      type: availableTypes[Math.floor(Math.random() * availableTypes.length)],
-      rating: rating,
-      userRatingsTotal: Math.floor(Math.random() * 300) + 20,
-      priceLevel: Math.floor(Math.random() * 3) + 1,
-      isOpen: Math.random() > 0.1,
-      lat: centerLat + latOffset,
-      lng: centerLng + lngOffset,
-      distance: calculateDistance(centerLat, centerLng, centerLat + latOffset, centerLng + lngOffset),
-      address: `範例路${Math.floor(Math.random() * 888)}號`
-    };
-  }).filter(r => {
-    if (ratingFilter === 'all') return true;
-    const minRating = parseInt(ratingFilter);
-    return parseFloat(r.rating) >= minRating; 
-  });
 };
 
 const loadGoogleMapsScript = (apiKey) => {
@@ -140,6 +110,122 @@ const StarRating = ({ rating }) => (
   </div>
 );
 
+// 計算交通時間
+const calculateTravelTime = (meters) => {
+  // 走路: 5 km/h = ~83 m/min
+  // 騎車: 15 km/h = ~250 m/min
+  // 開車: 30 km/h (市區均速) = ~500 m/min
+  const walk = Math.ceil(meters / 83);
+  const bike = Math.ceil(meters / 250);
+  const car = Math.ceil(meters / 500);
+  return { walk, bike, car };
+};
+
+// --- 真實地圖選點元件 ---
+const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
+  const mapRef = useRef(null);
+  const [selectedLoc, setSelectedLoc] = useState(initialLocation);
+  const [mapError, setMapError] = useState("");
+  
+  useEffect(() => {
+    if (!window.google || !window.google.maps) {
+        setMapError("Google Maps API 未載入，請確認已填入正確的 API Key。");
+        return;
+    }
+    if (!mapRef.current) return;
+
+    // 初始化地圖
+    const map = new window.google.maps.Map(mapRef.current, {
+      center: initialLocation,
+      zoom: 15,
+      disableDefaultUI: true, // 簡化介面
+      clickableIcons: false
+    });
+
+    // 初始化圖釘
+    const marker = new window.google.maps.Marker({
+      position: initialLocation,
+      map: map,
+      draggable: true,
+      animation: window.google.maps.Animation.DROP,
+      title: "拖曳我來修改位置"
+    });
+
+    // 監聽點擊地圖事件
+    map.addListener("click", (e) => {
+      const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      marker.setPosition(newLoc);
+      setSelectedLoc(newLoc);
+      map.panTo(newLoc);
+    });
+
+    // 監聽拖曳結束事件
+    marker.addListener("dragend", (e) => {
+      const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      setSelectedLoc(newLoc);
+      map.panTo(newLoc);
+    });
+
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-white flex flex-col animate-in fade-in font-rounded">
+      <div className="p-4 bg-white border-b flex justify-between items-center shadow-md z-10">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          <MapPin className="text-rose-500" /> 修改目前位置
+        </h3>
+        <button onClick={onCancel} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+          <X size={20} />
+        </button>
+      </div>
+      
+      {/* Google Map Container */}
+      <div className="flex-1 relative bg-gray-100 flex items-center justify-center">
+        {mapError ? (
+            <div className="text-center p-6 bg-white rounded-xl shadow-sm">
+                <AlertCircle className="mx-auto text-red-500 mb-2" size={32} />
+                <p className="text-gray-600 font-bold">{mapError}</p>
+                <button onClick={onCancel} className="mt-4 px-4 py-2 bg-gray-200 rounded-lg text-sm">關閉</button>
+            </div>
+        ) : (
+            <div ref={mapRef} className="w-full h-full" />
+        )}
+        
+        {/* Helper Text */}
+        {!mapError && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-gray-600 shadow-sm pointer-events-none">
+            點擊地圖或拖曳紅點來移動
+            </div>
+        )}
+      </div>
+
+      <div className="p-4 space-y-3 bg-white border-t">
+         <div className="flex justify-between text-xs text-gray-500 px-1">
+            <span>經度: {selectedLoc?.lng.toFixed(5)}</span>
+            <span>緯度: {selectedLoc?.lat.toFixed(5)}</span>
+         </div>
+         <button 
+           onClick={() => {
+             if(userLocation) {
+                setSelectedLoc(userLocation);
+                onConfirm(userLocation); 
+             }
+           }} 
+           className="w-full py-3 bg-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+         >
+           <Locate size={18}/> 回到真實 GPS 位置
+         </button>
+         <button 
+           onClick={() => onConfirm(selectedLoc)} 
+           className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold shadow-lg"
+         >
+           確認修改
+         </button>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('home'); 
   const [loading, setLoading] = useState(false);
@@ -168,10 +254,11 @@ export default function App() {
   const [distFilter, setDistFilter] = useState(500); 
   const [ratingFilter, setRatingFilter] = useState('all');
   const [hasSearched, setHasSearched] = useState(false);
+  const [travelTimes, setTravelTimes] = useState(calculateTravelTime(500));
   
   const [restaurants, setRestaurants] = useState([]);
   const [shortlist, setShortlist] = useState([]); 
-  const [isUsingRealData, setIsUsingRealData] = useState(false);
+  const [isGoogleMapsReady, setIsGoogleMapsReady] = useState(false);
   
   // UI State
   const [showDetail, setShowDetail] = useState(null);
@@ -209,13 +296,18 @@ export default function App() {
 
     if (GOOGLE_MAPS_API_KEY) {
       loadGoogleMapsScript(GOOGLE_MAPS_API_KEY)
-        .then(() => setIsUsingRealData(true))
+        .then(() => setIsGoogleMapsReady(true))
         .catch(err => {
-          setErrorMsg("Google Maps 載入失敗，將切換回模擬模式");
-          setIsUsingRealData(false);
+          console.error("Google Maps Load Failed", err);
+          setErrorMsg("無法載入 Google Maps，請檢查 API Key 設置。");
         });
     }
   }, []);
+
+  // 更新交通時間
+  useEffect(() => {
+    setTravelTimes(calculateTravelTime(distFilter));
+  }, [distFilter]);
 
   // Firebase Room Sync
   useEffect(() => {
@@ -230,7 +322,8 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    const seed = userProfile.gender === 'male' ? 'Felix' : 'Aneka';
+    // 修正：使用更明確的種子碼 (Jack=男, Maria=女)
+    const seed = userProfile.gender === 'male' ? 'Jack' : 'Maria'; 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
 
@@ -242,7 +335,6 @@ export default function App() {
     }
   };
 
-  // --- Social Actions (Improved Error Handling) ---
   const createRoom = async () => {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     const roomName = `${userProfile.name} 的美食團`;
@@ -264,12 +356,7 @@ export default function App() {
         setRoom({ id: roomRef.id, code, name: roomName });
       } catch (e) {
         console.error("建立房間失敗", e);
-        // 🔥 智慧錯誤提示：偵測 Billing 問題
-        if (e.message && e.message.includes("billing")) {
-           alert("【Firebase 設定錯誤】\n建立房間失敗。您的 Google Cloud 專案尚未啟用「計費功能」。\n\n請前往 GCP Console 綁定信用卡 (免費額度內不會扣款)。");
-        } else {
-           alert("建立房間失敗，請檢查網路連線或 API Key 設定。");
-        }
+        alert(`建立房間失敗 (Firebase Error)。\n錯誤訊息：${e.message}`);
       }
     } else {
       const newRoom = { id: Date.now().toString(), code, name: roomName };
@@ -298,11 +385,7 @@ export default function App() {
         }
       } catch (e) {
         console.error(e);
-        if (e.message && e.message.includes("billing")) {
-           alert("【Firebase 設定錯誤】\n加入失敗。請確認您的專案已啟用計費功能。");
-        } else {
-           alert("加入失敗，請檢查代碼或網路。");
-        }
+        alert(`加入失敗：${e.message}`);
       }
     } else {
       const joinedRoom = { id: Date.now().toString(), code: joinCodeInput, name: `美食團 ${joinCodeInput}` };
@@ -385,71 +468,70 @@ export default function App() {
     }
   };
 
-  // 搜尋邏輯
   const executeSearch = () => {
     if (!virtualLocation) return;
+    
+    // 強制檢查 Google Maps 是否就緒
+    if (!isGoogleMapsReady || !window.google || !window.google.maps) {
+      setErrorMsg("Google Maps API 尚未載入或 Key 無效。無法執行搜尋。");
+      return;
+    }
+
     setLoading(true);
     setHasSearched(true);
     setErrorMsg("");
     setRestaurants([]); 
 
-    if (isUsingRealData && window.google && window.google.maps) {
-      const mapDiv = document.createElement('div');
-      const service = new window.google.maps.places.PlacesService(mapDiv);
-      let keyword = "";
-      if (timeFilter === 'breakfast') keyword = "breakfast cafe bakery";
-      if (timeFilter === 'lunch') keyword = "lunch restaurant";
-      if (timeFilter === 'dinner') keyword = "dinner restaurant bar";
+    const mapDiv = document.createElement('div');
+    const service = new window.google.maps.places.PlacesService(mapDiv);
+    let keyword = "";
+    if (timeFilter === 'breakfast') keyword = "breakfast cafe bakery";
+    if (timeFilter === 'lunch') keyword = "lunch restaurant";
+    if (timeFilter === 'dinner') keyword = "dinner restaurant bar";
 
-      const request = {
-        location: new window.google.maps.LatLng(virtualLocation.lat, virtualLocation.lng),
-        radius: distFilter,
-        type: ['restaurant', 'food'],
-        keyword: keyword 
-      };
+    const request = {
+      location: new window.google.maps.LatLng(virtualLocation.lat, virtualLocation.lng),
+      radius: distFilter,
+      type: ['restaurant', 'food'],
+      keyword: keyword 
+    };
 
-      service.nearbySearch(request, (results, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-          let formatted = results.map(place => ({
-            id: place.place_id,
-            name: place.name,
-            type: place.types?.[0] || "餐廳",
-            rating: place.rating,
-            userRatingsTotal: place.user_ratings_total,
-            priceLevel: place.price_level,
-            isOpen: place.opening_hours?.isOpen ? place.opening_hours.isOpen() : null,
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-            distance: calculateDistance(
-              virtualLocation.lat, virtualLocation.lng,
-              place.geometry.location.lat(), place.geometry.location.lng()
-            ),
-            address: place.vicinity,
-            photoUrl: place.photos?.[0]?.getUrl({ maxWidth: 400 })
-          }));
+    service.nearbySearch(request, (results, status) => {
+      if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+        let formatted = results.map(place => ({
+          id: place.place_id,
+          name: place.name,
+          type: place.types?.[0] || "餐廳",
+          rating: place.rating,
+          userRatingsTotal: place.user_ratings_total,
+          priceLevel: place.price_level,
+          isOpen: place.opening_hours?.isOpen ? place.opening_hours.isOpen() : null,
+          lat: place.geometry.location.lat(),
+          lng: place.geometry.location.lng(),
+          distance: calculateDistance(
+            virtualLocation.lat, virtualLocation.lng,
+            place.geometry.location.lat(), place.geometry.location.lng()
+          ),
+          address: place.vicinity,
+          photoUrl: place.photos?.[0]?.getUrl({ maxWidth: 400 })
+        }));
 
-          if (ratingFilter !== 'all') {
-            const minRating = parseInt(ratingFilter);
-            formatted = formatted.filter(r => (r.rating || 0) >= minRating);
-          }
-          formatted.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
-          if (formatted.length === 0) setErrorMsg("篩選條件太嚴格，找不到餐廳 QQ");
-          setRestaurants(formatted);
-        } else {
-          setErrorMsg("在此範圍內找不到符合條件的餐廳");
-          setRestaurants([]);
+        if (ratingFilter !== 'all') {
+          const minRating = parseInt(ratingFilter);
+          formatted = formatted.filter(r => (r.rating || 0) >= minRating);
         }
-        setLoading(false);
-      });
-    } else {
-      setTimeout(() => {
-        const data = generateMockRestaurants(virtualLocation.lat, virtualLocation.lng, distFilter, timeFilter, ratingFilter);
-        data.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
-        if (data.length === 0) setErrorMsg("篩選條件太嚴格，找不到餐廳 QQ");
-        setRestaurants(data);
-        setLoading(false);
-      }, 800);
-    }
+        formatted.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+        
+        if (formatted.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
+        setRestaurants(formatted);
+      } else {
+        console.error("Google Maps Search Failed:", status);
+        setErrorMsg("搜尋失敗。原因：" + status);
+        // 不再切換回模擬數據，只顯示錯誤
+        setRestaurants([]);
+      }
+      setLoading(false);
+    });
   };
 
   const toggleShortlist = (e, restaurant) => {
@@ -478,7 +560,7 @@ export default function App() {
   // --- Screens ---
 
   const ProfileModal = () => (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in">
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in font-rounded">
       <div className="bg-white w-full max-w-sm rounded-3xl p-6 relative">
         <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full"><X size={20}/></button>
         <h2 className="text-xl font-black text-gray-800 mb-6 text-center">設定個人檔案</h2>
@@ -517,7 +599,7 @@ export default function App() {
 
     if (!room) {
       return (
-        <div className="p-6 h-full flex flex-col justify-center items-center text-center space-y-8">
+        <div className="p-6 h-full flex flex-col justify-center items-center text-center space-y-8 font-rounded">
            <div>
              <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-4"><Users size={40} /></div>
              <h2 className="text-2xl font-black text-gray-800">揪團吃飯</h2>
@@ -535,7 +617,7 @@ export default function App() {
       );
     }
     return (
-      <div className="flex flex-col h-full bg-gray-50">
+      <div className="flex flex-col h-full bg-gray-50 font-rounded">
          <div className="bg-white px-4 py-3 shadow-sm flex justify-between items-center z-10">
             <div><h3 className="font-bold text-gray-800">{room.name}</h3><p className="text-xs text-rose-500 font-bold">代碼: {room.code}</p></div>
             <div className="flex gap-2">
@@ -584,7 +666,7 @@ export default function App() {
     const r = showDetail;
     const isShortlisted = shortlist.some(item => item.id === r.id);
     return (
-      <div className="fixed inset-0 z-40 bg-white flex flex-col animate-in slide-in-from-right duration-300">
+      <div className="fixed inset-0 z-40 bg-white flex flex-col animate-in slide-in-from-right duration-300 font-rounded">
         <div className="h-64 bg-gray-200 relative group">
            <button onClick={() => setShowDetail(null)} className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-gray-800 shadow-sm z-10"><ChevronLeft size={24} /></button>
            <button onClick={() => handleSystemShare(r)} className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-teal-600 shadow-sm z-10"><Share2 size={20} /></button>
@@ -611,7 +693,13 @@ export default function App() {
   };
 
   const SearchPanel = () => (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 font-rounded">
+       {/* 內嵌字體樣式 */}
+       <style>{`
+         @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap');
+         .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }
+       `}</style>
+
        <div className="text-center mb-4 mt-4 flex flex-col items-center">
           <div onClick={() => setShowProfileModal(true)} className="w-16 h-16 rounded-full overflow-hidden mb-2 border-2 border-rose-500 cursor-pointer relative group">
              <img src={getAvatarUrl()} alt="Profile" className="w-full h-full object-cover" />
@@ -639,14 +727,36 @@ export default function App() {
               <ChevronDown className="absolute right-4 top-3.5 text-gray-400 pointer-events-none" size={20} />
             </div>
           </div>
+          
+          {/* 升級版距離選單 + 時間提示 */}
           <div>
              <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Navigation size={16} className="text-blue-500"/> 距離範圍</label>
-             <div className="grid grid-cols-3 gap-2">
-                {[200, 500, 1000, 2000].map((dist) => (
-                  <button key={dist} onClick={() => setDistFilter(dist)} className={`py-2 rounded-xl text-xs font-bold border ${distFilter === dist ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-500 border-gray-200'}`}>{dist >= 1000 ? `${dist/1000} km` : `${dist} m`}</button>
-                ))}
+             <div className="relative">
+               <select 
+                 value={distFilter} 
+                 onChange={(e) => setDistFilter(parseInt(e.target.value))}
+                 className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500"
+               >
+                 <option value={100}>100 公尺</option>
+                 <option value={300}>300 公尺</option>
+                 <option value={500}>500 公尺</option>
+                 <option value={1000}>1 公里</option>
+                 <option value={2000}>2 公里</option>
+                 <option value={5000}>5 公里</option>
+                 <option value={10000}>10 公里</option>
+               </select>
+               <ChevronDown className="absolute right-4 top-3.5 text-gray-400 pointer-events-none" size={20} />
+             </div>
+             {/* 時間提示小卡 */}
+             <div className="flex gap-2 mt-2 text-[10px] text-gray-500 font-bold bg-gray-50 p-2 rounded-lg justify-between">
+                <span className="flex items-center gap-1"><Footprints size={12}/> 走路 {travelTimes.walk} 分</span>
+                <div className="w-px bg-gray-300"></div>
+                <span className="flex items-center gap-1"><Bike size={12}/> 騎車 {travelTimes.bike} 分</span>
+                <div className="w-px bg-gray-300"></div>
+                <span className="flex items-center gap-1"><Car size={12}/> 開車 {travelTimes.car} 分</span>
              </div>
           </div>
+
           <div>
              <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Star size={16} className="text-yellow-500"/> Google 評分要求</label>
              <div className="relative">
@@ -665,7 +775,7 @@ export default function App() {
   );
 
   const SearchResults = () => (
-    <div className="p-4 space-y-4 pb-24">
+    <div className="p-4 space-y-4 pb-24 font-rounded">
       <div className="flex justify-between items-center mb-2">
          <button onClick={() => setHasSearched(false)} className="flex items-center gap-1 text-gray-500 font-bold text-sm bg-gray-100 px-3 py-1.5 rounded-xl"><ArrowLeft size={16} /> 調整篩選</button>
          <div className="text-xs text-gray-400 font-bold">找到 {restaurants.length} 間餐廳</div>
@@ -695,7 +805,7 @@ export default function App() {
   );
 
   const ShortlistScreen = () => (
-    <div className="p-4 pb-24 h-full flex flex-col">
+    <div className="p-4 pb-24 h-full flex flex-col font-rounded">
       <h1 className="text-2xl font-black text-gray-800 mb-4">候選清單</h1>
       {shortlist.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-gray-300 gap-4"><Heart size={64} strokeWidth={1} /><p className="text-sm">還沒有加入任何餐廳喔！</p><button onClick={() => setActiveTab('home')} className="px-6 py-2 bg-gray-800 text-white rounded-full text-sm font-bold mt-2">去逛逛</button></div>
@@ -730,7 +840,7 @@ export default function App() {
   );
 
   const MapSimulator = () => (
-    <div className="fixed inset-0 z-50 bg-gray-900/95 flex flex-col items-center justify-center p-4 animate-in fade-in">
+    <div className="fixed inset-0 z-50 bg-gray-900/95 flex flex-col items-center justify-center p-4 animate-in fade-in font-rounded">
       <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative">
         <div className="p-4 bg-gray-50 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><MapPin className="text-rose-500"/> 調整定位</h3><button onClick={() => setIsMapMode(false)} className="p-2 bg-gray-200 rounded-full"><X size={20}/></button></div>
         <div className="h-80 bg-blue-50 relative cursor-crosshair" onClick={(e) => {
@@ -748,8 +858,8 @@ export default function App() {
   );
 
   return (
-    <div className="h-screen bg-white max-w-md mx-auto relative overflow-hidden flex flex-col font-sans">
-      {isMapMode && <MapSimulator />}
+    <div className="h-screen bg-white max-w-md mx-auto relative overflow-hidden flex flex-col font-sans font-rounded">
+      {isMapMode && <RealMapSelector initialLocation={virtualLocation} userLocation={realLocation} onConfirm={(loc)=>{setVirtualLocation(loc); setIsMapMode(false);}} onCancel={()=>setIsMapMode(false)} />}
       {showProfileModal && <ProfileModal />}
       
       <div className="flex-1 overflow-y-auto no-scrollbar bg-white">
