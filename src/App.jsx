@@ -17,7 +17,7 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 請直接填入您的 Key，確保功能正常
+// 請直接填入您的 Key
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
 // 🔥 Firebase 設定
@@ -62,7 +62,8 @@ const loadGoogleMapsScript = (apiKey) => {
   if (window.google && window.google.maps) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    // 加入 loading=async 解決效能警告
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
@@ -119,7 +120,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   
   useEffect(() => {
     if (!window.google || !window.google.maps) {
-        setMapError("Google Maps API 未載入，請確認已填入正確的 API Key。");
+        setMapError("Google Maps API 未載入，請確認 API Key 是否正確且啟用 Maps JavaScript API。");
         return;
     }
     if (!mapRef.current) return;
@@ -244,6 +245,9 @@ export default function App() {
   const [shortlist, setShortlist] = useState([]); 
   const [isGoogleMapsReady, setIsGoogleMapsReady] = useState(false);
   
+  // 使用 useRef 來追蹤搜尋狀態，避免計時器閉包問題
+  const isSearchingRef = useRef(false);
+  
   const [showDetail, setShowDetail] = useState(null);
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
@@ -302,9 +306,8 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    // 💡 修正：依您的要求交換了性別對應 (男=Maria, 女=Felix)
-    // 雖然名字看起來相反，但這是為了符合您說的「圖片顯示」需求
-    const seed = userProfile.gender === 'male' ? 'Maria' : 'Felix'; 
+    // 💡 修正：Felix 為男性形象，Maria 為女性形象
+    const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
 
@@ -470,6 +473,9 @@ export default function App() {
     setHasSearched(true);
     setErrorMsg("");
     setRestaurants([]); 
+    
+    // 設定搜尋中旗標
+    isSearchingRef.current = true;
 
     const mapDiv = document.createElement('div');
     const service = new window.google.maps.places.PlacesService(mapDiv);
@@ -485,17 +491,20 @@ export default function App() {
       keyword: keyword 
     };
 
-    // 🔥 修正：強制 5 秒逾時檢查，防止轉圈圈卡死
-    // 這裡不依賴 loading 狀態變數，而是直接設定一個定時炸彈
-    const timeoutId = setTimeout(() => {
-        setLoading(false);
-        setErrorMsg("搜尋逾時 (5秒)。請確認 GCP 後台已啟用 'Places API' 且已連結計費帳戶。");
+    // 🔥 強制逾時機制 (使用 useRef 確保狀態正確)
+    setTimeout(() => {
+        if (isSearchingRef.current) {
+            isSearchingRef.current = false;
+            setLoading(false);
+            setErrorMsg("搜尋逾時 (5秒)。\n這通常代表您的 API Key 沒有啟用 'Places API (New)' 權限，或者該專案未連結計費帳戶。");
+        }
     }, 5000);
 
     service.nearbySearch(request, (results, status) => {
-      // 搜尋回來了，立刻拆除定時炸彈
-      clearTimeout(timeoutId); 
-      
+      // 如果已經逾時或被取消，就不處理結果
+      if (!isSearchingRef.current) return;
+      isSearchingRef.current = false; // 標記搜尋結束
+
       if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
         let formatted = results.map(place => ({
           id: place.place_id,
@@ -525,7 +534,7 @@ export default function App() {
         setRestaurants(formatted);
       } else {
         console.error("Google Maps Search Failed:", status);
-        setErrorMsg(`搜尋失敗 (${status})。請檢查 GCP 後台設定。`);
+        setErrorMsg(`搜尋失敗，代碼：${status}。\n(請檢查 Places API 是否啟用)`);
         setRestaurants([]);
       }
       setLoading(false);
@@ -782,7 +791,7 @@ export default function App() {
         <div className="flex flex-col items-center justify-center h-64 space-y-4"><div className="animate-spin text-4xl">🍙</div><p className="text-gray-400 font-bold animate-pulse">正在幫你找好吃的...</p></div>
       ) : (
         <div className="space-y-3">
-          {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"><AlertCircle size={18} /> {errorMsg}</div>}
+          {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"><AlertCircle size={18} /> <span className="whitespace-pre-line text-left">{errorMsg}</span></div>}
           {restaurants.map(r => (
             <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-transform flex gap-3">
               <div className="w-20 h-20 bg-gray-100 rounded-xl flex-shrink-0 flex items-center justify-center text-2xl font-bold text-gray-300 overflow-hidden relative">
