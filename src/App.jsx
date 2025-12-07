@@ -17,9 +17,10 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 請直接填入您的 Key
+// 請直接填入您的 Key (請確保已啟用 "Places API (New)")
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
+
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
@@ -62,8 +63,8 @@ const loadGoogleMapsScript = (apiKey) => {
   if (window.google && window.google.maps) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    // 加入 loading=async 解決效能警告
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
+    // 加入 loading=async 並指定版本，確保載入正確
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&v=weekly`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
@@ -93,7 +94,11 @@ const callGemini = async (prompt) => {
 
 const PriceDisplay = ({ level }) => (
   <div className="flex text-teal-500 text-[10px] font-bold bg-teal-50 px-1.5 py-0.5 rounded-full">
-    {level ? [...Array(level)].map((_, i) => <span key={i}>$</span>) : <span>$$</span>}
+    {/* 新版 API 可能回傳字串 enum，這裡做個簡單判斷 */}
+    {typeof level === 'number' 
+      ? [...Array(level)].map((_, i) => <span key={i}>$</span>) 
+      : <span>{level === 'PRICE_LEVEL_EXPENSIVE' || level === 'PRICE_LEVEL_VERY_EXPENSIVE' ? '$$$' : '$$'}</span>
+    }
   </div>
 );
 
@@ -120,7 +125,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   
   useEffect(() => {
     if (!window.google || !window.google.maps) {
-        setMapError("Google Maps API 未載入，請確認 API Key 是否正確且啟用 Maps JavaScript API。");
+        setMapError("Google Maps API 未載入，請確認 API Key。");
         return;
     }
     if (!mapRef.current) return;
@@ -130,7 +135,8 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         center: initialLocation,
         zoom: 15,
         disableDefaultUI: true, 
-        clickableIcons: false
+        clickableIcons: false,
+        mapId: "DEMO_MAP_ID" // New API 建議加上 mapId，這裡用 Demo ID 避免報錯
       });
 
       const marker = new window.google.maps.Marker({
@@ -245,7 +251,6 @@ export default function App() {
   const [shortlist, setShortlist] = useState([]); 
   const [isGoogleMapsReady, setIsGoogleMapsReady] = useState(false);
   
-  // 使用 useRef 來追蹤搜尋狀態，避免計時器閉包問題
   const isSearchingRef = useRef(false);
   
   const [showDetail, setShowDetail] = useState(null);
@@ -306,7 +311,6 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    // 💡 修正：Felix 為男性形象，Maria 為女性形象
     const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
@@ -460,12 +464,11 @@ export default function App() {
     }
   };
 
-  const executeSearch = () => {
+  const executeSearch = async () => {
     if (!virtualLocation) return;
     
-    // 強制檢查 Google Maps 是否就緒
     if (!isGoogleMapsReady || !window.google || !window.google.maps) {
-      setErrorMsg("Google Maps API 尚未載入或 Key 無效。無法執行搜尋。");
+      setErrorMsg("Google Maps API 尚未載入。請檢查 Key 是否正確填入且啟用 Maps JS API。");
       return;
     }
 
@@ -474,71 +477,111 @@ export default function App() {
     setErrorMsg("");
     setRestaurants([]); 
     
-    // 設定搜尋中旗標
     isSearchingRef.current = true;
 
-    const mapDiv = document.createElement('div');
-    const service = new window.google.maps.places.PlacesService(mapDiv);
-    let keyword = "";
-    if (timeFilter === 'breakfast') keyword = "breakfast cafe bakery";
-    if (timeFilter === 'lunch') keyword = "lunch restaurant";
-    if (timeFilter === 'dinner') keyword = "dinner restaurant bar";
+    try {
+        // 🔥 升級：使用 New Places API (Place.searchByText)
+        // 這需要 "Places API (New)" 權限，而非舊的 "Places API"
+        const { Place } = await google.maps.importLibrary("places");
 
-    const request = {
-      location: new window.google.maps.LatLng(virtualLocation.lat, virtualLocation.lng),
-      radius: distFilter,
-      type: ['restaurant', 'food'],
-      keyword: keyword 
-    };
+        let queryText = "restaurant";
+        if (timeFilter === 'breakfast') queryText = "breakfast";
+        if (timeFilter === 'lunch') queryText = "lunch restaurant";
+        if (timeFilter === 'dinner') queryText = "dinner restaurant";
 
-    // 🔥 強制逾時機制 (使用 useRef 確保狀態正確)
-    setTimeout(() => {
-        if (isSearchingRef.current) {
-            isSearchingRef.current = false;
-            setLoading(false);
-            setErrorMsg("搜尋逾時 (5秒)。\n這通常代表您的 API Key 沒有啟用 'Places API (New)' 權限，或者該專案未連結計費帳戶。");
+        // 強制逾時機制
+        const timeoutId = setTimeout(() => {
+            if (isSearchingRef.current) {
+                isSearchingRef.current = false;
+                setLoading(false);
+                setErrorMsg("搜尋逾時 (5秒)。\n請確認 GCP 後台已啟用 'Places API (New)' 權限，且已連結計費帳戶。");
+            }
+        }, 5000);
+
+        const { places } = await Place.searchByText({
+            textQuery: queryText,
+            fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos'],
+            locationBias: {
+                center: { lat: virtualLocation.lat, lng: virtualLocation.lng },
+                radius: distFilter,
+            },
+            maxResultCount: 20,
+            isOpenNow: false, 
+        });
+
+        clearTimeout(timeoutId);
+        if (!isSearchingRef.current) return;
+        isSearchingRef.current = false;
+
+        if (places && places.length > 0) {
+            const formatted = places.map(place => {
+                // Photo handling for New API
+                let photoUrl = null;
+                if (place.photos && place.photos.length > 0) {
+                    photoUrl = place.photos[0].getURI({ maxWidth: 400 });
+                }
+
+                // Price Level handling (New API often returns string enums)
+                let pLevel = 2;
+                if (typeof place.priceLevel === 'string') {
+                     if (place.priceLevel.includes('INEXPENSIVE')) pLevel = 1;
+                     else if (place.priceLevel.includes('MODERATE')) pLevel = 2;
+                     else if (place.priceLevel.includes('EXPENSIVE')) pLevel = 3;
+                     else if (place.priceLevel.includes('VERY_EXPENSIVE')) pLevel = 4;
+                } else if (typeof place.priceLevel === 'number') {
+                    pLevel = place.priceLevel;
+                }
+
+                return {
+                    id: place.id,
+                    name: place.displayName,
+                    type: place.types?.[0] || "餐廳",
+                    rating: place.rating,
+                    userRatingsTotal: place.userRatingCount,
+                    priceLevel: pLevel,
+                    isOpen: place.regularOpeningHours ? place.regularOpeningHours.isOpen() : null,
+                    lat: place.location.lat(),
+                    lng: place.location.lng(),
+                    distance: calculateDistance(
+                        virtualLocation.lat, virtualLocation.lng,
+                        place.location.lat(), place.location.lng()
+                    ),
+                    address: place.formattedAddress,
+                    photoUrl: photoUrl
+                };
+            });
+
+            let filtered = formatted;
+            
+            // Client-side filtering for strict distance
+            filtered = filtered.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
+
+            if (ratingFilter !== 'all') {
+                const minRating = parseInt(ratingFilter);
+                filtered = filtered.filter(r => (r.rating || 0) >= minRating);
+            }
+            
+            filtered.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+
+            if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
+            setRestaurants(filtered);
+        } else {
+            setErrorMsg("找不到餐廳，請嘗試放寬條件。");
+            setRestaurants([]);
         }
-    }, 5000);
 
-    service.nearbySearch(request, (results, status) => {
-      // 如果已經逾時或被取消，就不處理結果
-      if (!isSearchingRef.current) return;
-      isSearchingRef.current = false; // 標記搜尋結束
-
-      if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-        let formatted = results.map(place => ({
-          id: place.place_id,
-          name: place.name,
-          type: place.types?.[0] || "餐廳",
-          rating: place.rating,
-          userRatingsTotal: place.user_ratings_total,
-          priceLevel: place.price_level,
-          isOpen: place.opening_hours?.isOpen ? place.opening_hours.isOpen() : null,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-          distance: calculateDistance(
-            virtualLocation.lat, virtualLocation.lng,
-            place.geometry.location.lat(), place.geometry.location.lng()
-          ),
-          address: place.vicinity,
-          photoUrl: place.photos?.[0]?.getUrl({ maxWidth: 400 })
-        }));
-
-        if (ratingFilter !== 'all') {
-          const minRating = parseInt(ratingFilter);
-          formatted = formatted.filter(r => (r.rating || 0) >= minRating);
+    } catch (err) {
+        console.error("Search Error:", err);
+        setLoading(false);
+        // 捕捉特定錯誤：Places API 未啟用
+        if (err.message && err.message.includes("IsNotAllowedError")) {
+             setErrorMsg("搜尋失敗：Places API (New) 未啟用。\n請到 GCP Console 啟用。");
+        } else {
+             setErrorMsg("搜尋發生錯誤：" + err.message);
         }
-        formatted.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
-        
-        if (formatted.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
-        setRestaurants(formatted);
-      } else {
-        console.error("Google Maps Search Failed:", status);
-        setErrorMsg(`搜尋失敗，代碼：${status}。\n(請檢查 Places API 是否啟用)`);
-        setRestaurants([]);
-      }
-      setLoading(false);
-    });
+    } finally {
+        setLoading(false);
+    }
   };
 
   const toggleShortlist = (e, restaurant) => {
