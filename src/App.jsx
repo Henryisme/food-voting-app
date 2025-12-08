@@ -4,7 +4,7 @@ import {
   Copy, Crown, Share2, Sparkles, X, Home, Settings, List, ChevronLeft, 
   Locate, Map, Send, AlertCircle, Clock, Filter, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
-  Bike, Car, Footprints, Vote
+  Bike, Car, Footprints, Vote, Smile
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -92,7 +92,7 @@ const callGemini = async (prompt) => {
 };
 
 const PriceDisplay = ({ level }) => (
-  <div className="flex text-teal-500 text-[10px] font-bold bg-teal-50 px-1.5 py-0.5 rounded-full">
+  <div className="flex text-emerald-600 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
     {typeof level === 'number' 
       ? [...Array(level)].map((_, i) => <span key={i}>$</span>) 
       : <span>{level === 'PRICE_LEVEL_EXPENSIVE' || level === 'PRICE_LEVEL_VERY_EXPENSIVE' ? '$$$' : '$$'}</span>
@@ -101,13 +101,12 @@ const PriceDisplay = ({ level }) => (
 );
 
 const StarRating = ({ rating }) => (
-  <div className="flex items-center gap-0.5 bg-yellow-50 px-1.5 py-0.5 rounded-full text-yellow-600 font-bold text-[10px]">
+  <div className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-full text-amber-600 font-bold text-[10px] border border-amber-100">
     <Star size={10} fill="currentColor" />
     <span>{rating || "N/A"}</span>
   </div>
 );
 
-// 計算交通時間
 const calculateTravelTime = (meters) => {
   const walk = Math.ceil(meters / 83);
   const bike = Math.ceil(meters / 250);
@@ -165,7 +164,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
 
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col animate-in fade-in font-rounded">
-      <div className="p-4 bg-white border-b flex justify-between items-center shadow-md z-10">
+      <div className="p-4 bg-white/80 backdrop-blur-md border-b flex justify-between items-center shadow-sm z-10 absolute top-0 w-full">
         <h3 className="font-bold text-gray-800 flex items-center gap-2">
           <MapPin className="text-rose-500" /> 修改目前位置
         </h3>
@@ -174,7 +173,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         </button>
       </div>
       
-      <div className="flex-1 relative bg-gray-100 flex items-center justify-center">
+      <div className="flex-1 relative bg-gray-100 flex items-center justify-center h-full pt-16 pb-20">
         {mapError ? (
             <div className="text-center p-6 bg-white rounded-xl shadow-sm">
                 <AlertCircle className="mx-auto text-red-500 mb-2" size={32} />
@@ -186,34 +185,36 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         )}
         
         {!mapError && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-gray-600 shadow-sm pointer-events-none">
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-gray-600 shadow-lg pointer-events-none border border-gray-100">
             點擊地圖或拖曳紅點來移動
             </div>
         )}
       </div>
 
-      <div className="p-4 space-y-3 bg-white border-t">
+      <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
          <div className="flex justify-between text-xs text-gray-500 px-1">
             <span>經度: {selectedLoc?.lng.toFixed(5)}</span>
             <span>緯度: {selectedLoc?.lat.toFixed(5)}</span>
          </div>
-         <button 
-           onClick={() => {
-             if(userLocation) {
-                setSelectedLoc(userLocation);
-                onConfirm(userLocation); 
-             }
-           }} 
-           className="w-full py-3 bg-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2"
-         >
-           <Locate size={18}/> 回到真實 GPS 位置
-         </button>
-         <button 
-           onClick={() => onConfirm(selectedLoc)} 
-           className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold shadow-lg"
-         >
-           確認修改
-         </button>
+         <div className="flex gap-2">
+            <button 
+              onClick={() => {
+                if(userLocation) {
+                    setSelectedLoc(userLocation);
+                    onConfirm(userLocation); 
+                }
+              }} 
+              className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"
+            >
+              <Locate size={18}/> 真實 GPS
+            </button>
+            <button 
+              onClick={() => onConfirm(selectedLoc)} 
+              className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all"
+            >
+              確認修改
+            </button>
+         </div>
       </div>
     </div>
   );
@@ -228,8 +229,10 @@ export default function App() {
   const [virtualLocation, setVirtualLocation] = useState(null);
   const [isMapMode, setIsMapMode] = useState(false);
 
+  // Profile with Gender
   const [userProfile, setUserProfile] = useState({
     name: '美食探險家',
+    gender: 'male', 
     customAvatar: null
   });
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -308,8 +311,9 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    // 預設頭像如果沒有選擇，隨機一個
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`;
+    // 依據性別給予不同的預設頭像種子
+    const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; 
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
 
   const handleFileUpload = (e) => {
@@ -414,7 +418,6 @@ export default function App() {
     }
   };
 
-  // 分享餐廳 - 預設不開啟投票，只分享資訊
   const shareRestaurantToRoom = async (restaurant) => {
     if (!room) {
       alert("請先建立或加入一個房間喔！");
@@ -424,10 +427,10 @@ export default function App() {
     const msgData = {
       sender: userProfile.name,
       avatar: getAvatarUrl(),
-      text: `分享了一家餐廳：`,
+      text: `我想吃這家！`,
       type: 'share',
       restaurant: restaurant,
-      votingEnabled: false, // 預設關閉投票
+      votingEnabled: false, 
       votes: 0,
       voters: [],
       createdAt: new Date()
@@ -441,7 +444,6 @@ export default function App() {
     setShowDetail(null);
   };
 
-  // 開啟投票功能
   const enableVoting = async (msgId) => {
     if (db && room) {
       const msgRef = doc(db, "rooms", room.id, "messages", msgId);
@@ -519,7 +521,7 @@ export default function App() {
                 radius: distFilter,
             },
             maxResultCount: 20,
-            isOpenNow: true, // 🔥 只搜尋營業中的店家
+            isOpenNow: true, 
         });
 
         clearTimeout(timeoutId);
@@ -543,17 +545,12 @@ export default function App() {
                     pLevel = place.priceLevel;
                 }
 
-                // Get Open Status
                 let isOpenStatus = null;
                 try { isOpenStatus = await place.isOpen(); } catch(e) { }
                 
-                // Get Opening Hours Text
                 let openingText = "營業時間未知";
                 if (place.regularOpeningHours && place.regularOpeningHours.weekdayDescriptions) {
-                    // 簡單取今天的
                     const todayIndex = new Date().getDay();
-                    // Google Sunday=0, weekdayDescriptions usually starts Monday=0 or Sunday=0 depending on locale
-                    // 這裡簡化處理，直接存整個陣列，顯示時再處理
                     openingText = place.regularOpeningHours.weekdayDescriptions;
                 }
 
@@ -565,7 +562,7 @@ export default function App() {
                     userRatingsTotal: place.userRatingCount,
                     priceLevel: pLevel,
                     isOpen: isOpenStatus,
-                    openingHours: openingText, // 新增營業時間欄位
+                    openingHours: openingText, 
                     lat: place.location.lat(),
                     lng: place.location.lng(),
                     distance: calculateDistance(
@@ -586,7 +583,6 @@ export default function App() {
                 filtered = filtered.filter(r => (r.rating || 0) >= minRating);
             }
             
-            // 🔥 排序改為：評分高 -> 低
             filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
 
             if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
@@ -640,44 +636,62 @@ export default function App() {
 
   const ProfileModal = () => {
     const [localName, setLocalName] = useState(userProfile.name);
-    // 預設頭像列表
+    // 預設頭像列表 (不分性別，自由選擇)
     const avatarSeeds = ["Felix", "Maria", "Jack", "Aneka", "Jocelyn", "Granny", "Bear", "Leo", "Zoe", "Max", "Luna", "Tiger"];
 
     return (
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in font-rounded">
-        <div className="bg-white w-full max-w-sm rounded-3xl p-6 relative max-h-[90vh] overflow-y-auto">
-          <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full"><X size={20}/></button>
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in font-rounded backdrop-blur-sm">
+        <div className="bg-white/95 w-full max-w-sm rounded-[2rem] p-6 relative max-h-[90vh] overflow-y-auto shadow-2xl border border-white/50">
+          <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20}/></button>
           <h2 className="text-xl font-black text-gray-800 mb-6 text-center">設定個人檔案</h2>
           
           {/* 預覽 & 上傳 */}
           <div className="flex flex-col items-center gap-4 mb-6">
-            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-rose-100 relative group shadow-md">
+            <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-rose-200 relative group shadow-lg ring-4 ring-rose-50">
                <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Avatar" className="w-full h-full object-cover" />
-               <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs">
-                  <Camera size={20} className="mb-1"/>
+               <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs font-bold backdrop-blur-sm">
+                  <Camera size={24} className="mb-1"/>
                   <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
                </label>
             </div>
             
-            {/* 修正：使用 Local State 控制輸入，避免中文輸入法問題 */}
             <input 
               type="text" 
               value={localName}
               onChange={(e) => setLocalName(e.target.value)}
-              className="text-center font-bold text-lg border-b-2 border-gray-200 focus:border-rose-500 outline-none pb-1 w-2/3"
+              className="text-center font-bold text-xl border-b-2 border-gray-200 focus:border-rose-500 outline-none pb-2 w-3/4 bg-transparent transition-colors"
               placeholder="輸入暱稱"
             />
           </div>
   
+          {/* 性別選擇 (已加回) */}
+          <div className="space-y-3 mb-6">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">形象風格</label>
+             <div className="flex gap-3 bg-gray-100 p-1 rounded-2xl">
+                <button 
+                   onClick={() => setUserProfile({...userProfile, gender: 'male', customAvatar: null})}
+                   className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'male' && !userProfile.customAvatar ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                   <User size={18} /> 男生
+                </button>
+                <button 
+                   onClick={() => setUserProfile({...userProfile, gender: 'female', customAvatar: null})}
+                   className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'female' && !userProfile.customAvatar ? 'bg-white text-rose-500 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                   <User size={18} /> 女生
+                </button>
+             </div>
+          </div>
+
           {/* 頭像選擇 */}
           <div className="space-y-3">
-             <label className="text-sm font-bold text-gray-500">選擇頭像</label>
-             <div className="grid grid-cols-4 gap-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">快速選擇頭像</label>
+             <div className="grid grid-cols-4 gap-3">
                 {avatarSeeds.map(seed => (
                    <div 
                       key={seed}
                       onClick={() => setUserProfile({...userProfile, customAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`})}
-                      className="aspect-square rounded-xl bg-gray-100 overflow-hidden cursor-pointer hover:ring-2 hover:ring-rose-500 transition-all"
+                      className="aspect-square rounded-2xl bg-gray-50 overflow-hidden cursor-pointer hover:ring-4 hover:ring-rose-200 transition-all shadow-sm border border-gray-100"
                    >
                       <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`} className="w-full h-full object-cover" />
                    </div>
@@ -690,7 +704,7 @@ export default function App() {
                 setUserProfile(prev => ({...prev, name: localName}));
                 setShowProfileModal(false);
              }} 
-             className="w-full mt-8 bg-gray-900 text-white py-3 rounded-xl font-bold"
+             className="w-full mt-8 bg-gray-900 text-white py-4 rounded-2xl font-bold shadow-lg shadow-gray-300 hover:bg-gray-800 active:scale-95 transition-all"
           >
              儲存設定
           </button>
@@ -706,18 +720,40 @@ export default function App() {
 
     if (!room) {
       return (
-        <div className="p-6 h-full flex flex-col justify-center items-center text-center space-y-8 font-rounded">
-           <div>
-             <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-4"><Users size={40} /></div>
-             <h2 className="text-2xl font-black text-gray-800">揪團吃飯</h2>
-             <p className="text-gray-400 text-sm mt-2">建立房間或輸入代碼，<br/>和朋友一起投票決定吃什麼！</p>
+        <div className="p-6 h-full flex flex-col justify-center items-center text-center space-y-8 font-rounded bg-gradient-to-b from-orange-50/50 to-white">
+           <div className="animate-in fade-in zoom-in duration-500">
+             <div className="w-24 h-24 bg-gradient-to-br from-rose-100 to-orange-100 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shadow-inner ring-8 ring-white">
+               <Users size={48} />
+             </div>
+             <h2 className="text-3xl font-black text-gray-800 mb-2">揪團吃飯</h2>
+             <p className="text-gray-400 text-sm leading-relaxed">
+               不再孤單吃飯！<br/>建立房間或輸入代碼，和朋友一起決定。
+             </p>
            </div>
-           <div className="w-full space-y-4">
-              <button onClick={createRoom} className="w-full py-4 bg-rose-500 text-white rounded-2xl font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-transform active:scale-95 flex items-center justify-center gap-2"><PlusCircle size={20} /> 建立新房間</button>
-              <div className="relative"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div><div className="relative flex justify-center text-sm"><span className="px-2 bg-white text-gray-500">或是</span></div></div>
+
+           <div className="w-full space-y-4 max-w-xs">
+              <button 
+                onClick={createRoom}
+                className="w-full py-4 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-2xl font-bold shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <PlusCircle size={20} /> 建立新房間
+              </button>
+              
+              <div className="relative py-2">
+                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                 <div className="relative flex justify-center text-xs font-bold text-gray-400 tracking-wider"><span className="px-2 bg-transparent">OR</span></div>
+              </div>
+
               <div className="flex gap-2">
-                 <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} placeholder="輸入房間代碼" className="flex-1 bg-gray-100 rounded-xl px-4 font-bold outline-none focus:ring-2 focus:ring-rose-500 text-center" maxLength={4}/>
-                 <button onClick={joinRoom} className="px-6 bg-gray-900 text-white rounded-xl font-bold">加入</button>
+                 <input 
+                   type="text" 
+                   value={joinCodeInput}
+                   onChange={(e) => setJoinCodeInput(e.target.value)}
+                   placeholder="輸入房間代碼"
+                   className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 font-bold outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent text-center shadow-sm"
+                   maxLength={4}
+                 />
+                 <button onClick={joinRoom} className="px-6 bg-gray-800 text-white rounded-2xl font-bold shadow-md hover:bg-gray-700 transition-colors">加入</button>
               </div>
            </div>
         </div>
@@ -725,41 +761,68 @@ export default function App() {
     }
     return (
       <div className="flex flex-col h-full bg-gray-50 font-rounded">
-         <div className="bg-white px-4 py-3 shadow-sm flex justify-between items-center z-10">
-            <div><h3 className="font-bold text-gray-800">{room.name}</h3><p className="text-xs text-rose-500 font-bold">代碼: {room.code}</p></div>
+         <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-gray-100">
+            <div>
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                {room.name}
+                <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-extrabold">#{room.code}</span>
+              </h3>
+            </div>
             <div className="flex gap-2">
-               <button onClick={copyInviteLink} className="p-2 text-teal-600 bg-teal-50 rounded-full hover:bg-teal-100"><LinkIcon size={20} /></button>
-               <button onClick={() => setRoom(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full"><LogOut size={20} /></button>
+               <button onClick={copyInviteLink} className="p-2 text-teal-600 bg-teal-50 rounded-full hover:bg-teal-100 transition-colors"><LinkIcon size={20} /></button>
+               <button onClick={() => setRoom(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><LogOut size={20} /></button>
             </div>
          </div>
-         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+         
+         <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {messages.map((msg) => {
-              if (msg.type === 'system') return <div key={msg.id} className="text-center text-xs text-gray-400 my-2 bg-gray-100 py-1 rounded-full mx-auto w-fit px-4">{msg.text}</div>
+              if (msg.type === 'system') return <div key={msg.id} className="text-center text-xs text-gray-400 my-4"><span className="bg-gray-200/50 px-3 py-1 rounded-full">{msg.text}</span></div>
               const isMe = msg.sender === userProfile.name;
+              
               return (
-                 <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
-                    {!isMe && (<div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0"><img src={msg.avatar} className="w-full h-full object-cover" /></div>)}
-                    <div className={`max-w-[85%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                 <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group`}>
+                    {!isMe && (
+                       <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm mt-1">
+                          <img src={msg.avatar} className="w-full h-full object-cover" />
+                       </div>
+                    )}
+                    <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                        <span className="text-[10px] text-gray-400 mb-1 px-1">{msg.sender}</span>
+                       
                        {msg.type === 'text' ? (
-                          <div className={`px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-rose-500 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>{msg.text}</div>
+                          <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-gradient-to-br from-rose-500 to-orange-500 text-white rounded-tr-sm' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-sm'}`}>
+                             {msg.text}
+                          </div>
                        ) : (
-                          // Restaurant Share Card (Updated Logic)
-                          <div className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-rose-200' : 'border-gray-200'} shadow-sm w-56`}>
-                             <div className="w-full h-24 bg-gray-100 rounded-lg mb-2 overflow-hidden relative">
-                                {msg.restaurant.photoUrl ? (<img src={msg.restaurant.photoUrl} className="w-full h-full object-cover" />) : (<div className="w-full h-full flex items-center justify-center text-3xl text-gray-300 font-bold">{msg.restaurant.name.charAt(0)}</div>)}
-                                <div className="absolute top-1 right-1 bg-white/90 px-1.5 py-0.5 rounded text-[10px] font-bold text-orange-500 flex items-center gap-1"><Star size={8} fill="currentColor"/> {msg.restaurant.rating}</div>
+                          // 餐廳分享卡片
+                          <div className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-rose-100' : 'border-gray-100'} shadow-sm w-60 overflow-hidden`}>
+                             <div className="w-full h-32 bg-gray-100 rounded-xl mb-3 overflow-hidden relative">
+                                {msg.restaurant.photoUrl ? (
+                                   <img src={msg.restaurant.photoUrl} className="w-full h-full object-cover hover:scale-110 transition-transform duration-500" />
+                                ) : (
+                                   <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300 font-bold bg-gray-50">{msg.restaurant.name.charAt(0)}</div>
+                                )}
+                                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-xs font-bold text-orange-500 flex items-center gap-1 shadow-sm">
+                                   <Star size={10} fill="currentColor"/> {msg.restaurant.rating}
+                                </div>
                              </div>
-                             <h4 className="font-bold text-sm text-gray-800 truncate">{msg.restaurant.name}</h4>
-                             <p className="text-xs text-gray-400 truncate mb-3">{msg.restaurant.type}</p>
+                             <h4 className="font-bold text-gray-800 truncate text-lg mb-0.5">{msg.restaurant.name}</h4>
+                             <p className="text-xs text-gray-400 truncate mb-3 flex items-center gap-1"><MapPin size={10}/> {msg.restaurant.address}</p>
                              
-                             {/* 投票控制區 */}
+                             {/* 投票按鈕區 */}
                              {msg.votingEnabled ? (
-                                <button onClick={() => voteForMessage(msg.id, msg.voters, msg.votes)} className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                                   <ThumbsUp size={14} /> {msg.votes || 0} 票
+                                <button 
+                                  onClick={() => voteForMessage(msg.id, msg.voters, msg.votes)}
+                                  className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white shadow-md shadow-teal-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
+                                >
+                                   <ThumbsUp size={14} className={msg.voters?.includes(userProfile.name) ? "animate-bounce" : ""} /> 
+                                   {msg.votes > 0 ? `${msg.votes} 人想吃` : '投一票'}
                                 </button>
                              ) : (
-                                <button onClick={() => enableVoting(msg.id)} className="w-full py-2 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-rose-100">
+                                <button 
+                                  onClick={() => enableVoting(msg.id)} 
+                                  className="w-full py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-rose-100 border border-rose-100 transition-colors"
+                                >
                                    <Vote size={14} /> 發起投票
                                 </button>
                              )}
@@ -771,9 +834,23 @@ export default function App() {
             })}
             <div ref={messagesEndRef} />
          </div>
-         <div className="p-3 bg-white border-t border-gray-100 flex gap-2">
-            <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (sendMessage(msgInput), setMsgInput(""))} className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-rose-500" placeholder="輸入訊息..."/>
-            <button onClick={() => { sendMessage(msgInput); setMsgInput(""); }} className="p-2 bg-rose-500 text-white rounded-full hover:bg-rose-600 transition-colors"><Send size={20} /></button>
+
+         {/* Input Area */}
+         <div className="p-3 bg-white border-t border-gray-100 flex gap-2 items-center pb-safe">
+            <input 
+              value={msgInput}
+              onChange={(e) => setMsgInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (sendMessage(msgInput), setMsgInput(""))}
+              className="flex-1 bg-gray-100 rounded-full px-5 py-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 transition-shadow"
+              placeholder="輸入訊息..."
+            />
+            <button 
+               onClick={() => { sendMessage(msgInput); setMsgInput(""); }}
+               className={`p-3 rounded-full transition-all shadow-md ${msgInput.trim() ? 'bg-rose-500 text-white hover:bg-rose-600 hover:scale-105' : 'bg-gray-200 text-gray-400'}`}
+               disabled={!msgInput.trim()}
+            >
+               <Send size={20} />
+            </button>
          </div>
       </div>
     );
@@ -788,46 +865,87 @@ export default function App() {
     let todayHours = "暫無資料";
     if (Array.isArray(r.openingHours)) {
        const day = new Date().getDay(); // 0 is Sunday
-       // Google API: 0=Sunday, Array usually matches 0-6
-       // 但 New Places API weekdayDescriptions 順序不一定，這裡簡單顯示全部或當天
-       // 為求精簡，顯示全部會太多，我們嘗試找今天的
        const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
        const todayStr = daysMap[day];
-       const todayInfo = r.openingHours.find(h => h.includes(todayStr) || h.includes(todayStr.substring(0, 3))); // 簡單比對
+       // 嘗試模糊比對
+       const todayInfo = r.openingHours.find(h => h.includes(todayStr) || h.includes(todayStr.substring(0, 3))); 
        if (todayInfo) todayHours = todayInfo;
-       else if(r.openingHours.length > 0) todayHours = r.openingHours[(day + 6) % 7]; // Fallback mapping
+       else if(r.openingHours.length > 0) todayHours = r.openingHours[(day + 6) % 7]; 
     }
 
     return (
       <div className="fixed inset-0 z-40 bg-white flex flex-col animate-in slide-in-from-right duration-300 font-rounded">
-        <div className="h-64 bg-gray-200 relative group">
-           <button onClick={() => setShowDetail(null)} className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-gray-800 shadow-sm z-10"><ChevronLeft size={24} /></button>
-           <button onClick={() => handleSystemShare(r)} className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-teal-600 shadow-sm z-10"><Share2 size={20} /></button>
-           <div className="w-full h-full flex items-center justify-center text-6xl text-gray-400 font-bold bg-gradient-to-b from-gray-100 to-gray-300 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover" /> : r.name.charAt(0)}</div>
-           <div className="absolute bottom-4 left-4 text-white"><span className="bg-black/50 px-2 py-1 rounded text-xs backdrop-blur-md">{r.type}</span></div>
+        <div className="h-72 bg-gray-200 relative group">
+           <button onClick={() => setShowDetail(null)} className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-gray-800 shadow-sm z-10 hover:bg-white transition-colors"><ChevronLeft size={24} /></button>
+           <button onClick={() => handleSystemShare(r)} className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-teal-600 shadow-sm z-10 hover:bg-white transition-colors"><Share2 size={20} /></button>
+           
+           <div className="w-full h-full flex items-center justify-center text-6xl text-gray-400 font-bold bg-gradient-to-b from-gray-100 to-gray-300 overflow-hidden">
+             {r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover" /> : r.name.charAt(0)}
+           </div>
+           
+           <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/60 to-transparent"></div>
+           <div className="absolute bottom-4 left-4 text-white">
+             <span className="bg-white/20 px-3 py-1 rounded-full text-xs backdrop-blur-md border border-white/30 font-bold tracking-wide">{r.type}</span>
+           </div>
         </div>
-        <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-          <div className="flex justify-between items-start mb-2"><h2 className="text-2xl font-black text-gray-800">{r.name}</h2><div className="flex flex-col items-end"><PriceDisplay level={r.priceLevel} /><span className={`text-[10px] mt-1 px-1.5 py-0.5 rounded ${r.isOpen !== null ? (r.isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') : 'bg-gray-100 text-gray-500'}`}>{r.isOpen !== null ? (r.isOpen ? '營業中' : '休息中') : '營業時間未知'}</span></div></div>
-          <div className="flex items-center gap-2 mb-4 text-sm"><StarRating rating={r.rating} /> <span className="text-gray-400">({r.userRatingsTotal} 評論)</span></div>
+
+        <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)] relative">
+          {/* Header Info */}
+          <div className="flex justify-between items-start mb-2">
+            <h2 className="text-2xl font-black text-gray-800 leading-tight flex-1 mr-2">{r.name}</h2>
+            <div className="flex flex-col items-end">
+               <PriceDisplay level={r.priceLevel} />
+               <span className={`text-[10px] mt-1 px-2 py-0.5 rounded-full font-bold ${r.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                 {r.isOpen ? '營業中' : '休息中'}
+               </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mb-6 text-sm">
+             <StarRating rating={r.rating} /> 
+             <span className="text-gray-400 font-medium">({r.userRatingsTotal} 則評論)</span>
+          </div>
           
-          {/* 營業時間顯示區 */}
-          <div className="bg-blue-50 p-3 rounded-xl mb-4 text-xs text-blue-800 flex flex-col gap-1">
-             <span className="font-bold flex items-center gap-1"><Clock size={14}/> 今日營業時間</span>
-             <span className="pl-5">{todayHours}</span>
+          {/* 營業時間顯示區 (New) */}
+          <div className="bg-blue-50/80 p-4 rounded-2xl mb-6 text-xs text-blue-900 flex flex-col gap-2 border border-blue-100">
+             <span className="font-bold flex items-center gap-2 text-blue-700 uppercase tracking-wider"><Clock size={14}/> 今日營業時間</span>
+             <span className="pl-6 text-sm font-medium">{todayHours.replace(/"/g, '')}</span>
           </div>
 
           <div className="space-y-4">
-             <div className="bg-gray-50 p-4 rounded-xl flex items-center gap-3"><MapPin className="text-gray-400" size={20} /><div className="flex-1"><p className="text-sm text-gray-800">{r.address}</p><p className="text-xs text-gray-400">距離 {r.distance} 公里</p></div></div>
+             <div className="bg-gray-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-gray-100 transition-colors cursor-pointer group" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)}>
+               <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-400 shadow-sm group-hover:text-rose-500 transition-colors">
+                  <MapPin size={20} />
+               </div>
+               <div className="flex-1">
+                 <p className="text-sm font-bold text-gray-800">{r.address}</p>
+                 <p className="text-xs text-gray-500 mt-0.5">距離 {r.distance} 公里</p>
+               </div>
+               <ChevronLeft size={16} className="rotate-180 text-gray-300"/>
+             </div>
           </div>
         </div>
-        <div className="p-4 border-t border-gray-100 flex gap-3 pb-8 bg-white">
-           <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors ${isShortlisted ? 'bg-rose-100 text-rose-500' : 'bg-gray-100 text-gray-500'}`}><Heart size={20} fill={isShortlisted ? "currentColor" : "none"} /></button>
+
+        {/* 底部按鈕區 */}
+        <div className="p-4 border-t border-gray-100 flex gap-3 pb-8 bg-white safe-area-bottom">
+           <button 
+             onClick={(e) => toggleShortlist(e, r)}
+             className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+           >
+             <Heart size={20} fill={isShortlisted ? "currentColor" : "none"} />
+           </button>
+           
            {room ? (
-             <button onClick={() => shareRestaurantToRoom(r)} className="flex-[3] bg-teal-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-200"><Send size={18} /> 分享到聊天室</button>
+             <button 
+               onClick={() => shareRestaurantToRoom(r)}
+               className="flex-[3] bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300 transition-all active:scale-95"
+             >
+               <Send size={18} /> 分享到聊天室
+             </button>
            ) : (
              <button 
                 onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.name)}&destination_place_id=${r.id}`)} 
-                className="flex-[3] bg-gray-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+                className="flex-[3] bg-gray-900 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-gray-800 transition-all active:scale-95"
              >
                 <Navigation size={18}/> Google Maps 導航
              </button>
@@ -838,108 +956,161 @@ export default function App() {
   };
 
   const SearchPanel = () => (
-    <div className="p-6 space-y-6 font-rounded">
+    <div className="p-6 space-y-8 font-rounded bg-gradient-to-b from-orange-50/30 to-white min-h-full">
        {/* 內嵌字體樣式 */}
        <style>{`
-         @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap');
+         @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap');
          .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }
        `}</style>
 
-       <div className="text-center mb-4 mt-4 flex flex-col items-center">
-          <div onClick={() => setShowProfileModal(true)} className="w-16 h-16 rounded-full overflow-hidden mb-2 border-2 border-rose-500 cursor-pointer relative group">
+       <div className="text-center mt-6 flex flex-col items-center">
+          <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105">
              <img src={getAvatarUrl()} alt="Profile" className="w-full h-full object-cover" />
-             <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={20}/></div>
+             <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={24}/></div>
           </div>
-          <h1 className="text-3xl font-black text-gray-800 flex items-center justify-center gap-2">今天吃什麼 <Utensils className="text-rose-500" /></h1>
+          <h1 className="text-3xl font-black text-gray-800 flex items-center justify-center gap-2 tracking-tight">
+            今天吃什麼 <Utensils className="text-rose-500 fill-rose-500" />
+          </h1>
+          <p className="text-gray-400 text-sm mt-1 font-medium">Hello, {userProfile.name}！想吃點什麼？</p>
        </div>
-       <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 relative overflow-hidden group">
-          <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
-          <label className="text-xs font-bold text-gray-400 mb-2 block flex items-center gap-1"><MapPin size={12}/> 目前搜尋位置</label>
+
+       <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setIsMapMode(true)}>
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-rose-400 to-orange-400"></div>
+          <div className="flex justify-between items-center mb-3">
+             <label className="text-xs font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wider"><MapPin size={12}/> 目前搜尋位置</label>
+             <span className="text-rose-500 text-xs font-bold bg-rose-50 px-2 py-0.5 rounded-full">點擊修改</span>
+          </div>
           <div className="flex items-center gap-3">
-             <div className="flex-1"><div className="text-sm font-bold text-gray-800 truncate">{virtualLocation === realLocation ? "📍 我的目前位置 (GPS)" : "🗺️ 自訂地圖位置"}</div></div>
-             <button onClick={() => setIsMapMode(true)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold rounded-xl">修改</button>
+             <div className="flex-1">
+                <div className="text-lg font-bold text-gray-800 truncate tracking-tight">{virtualLocation === realLocation ? "📍 我的目前位置" : "🗺️ 自訂地圖位置"}</div>
+                <div className="text-xs text-gray-400 font-mono mt-1 opacity-60">{virtualLocation?.lat.toFixed(4)}, {virtualLocation?.lng.toFixed(4)}</div>
+             </div>
           </div>
        </div>
-       <div className="space-y-4">
-          <div>
-            <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Clock size={16} className="text-teal-500"/> 用餐時段</label>
-            <div className="relative">
-              <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl font-bold outline-none">
-                <option value="breakfast">🥪 早餐 / 早午餐</option>
-                <option value="lunch">🍱 午餐</option>
-                <option value="dinner">🍲 晚餐 / 宵夜</option>
-              </select>
-              <ChevronDown className="absolute right-4 top-3.5 text-gray-400 pointer-events-none" size={20} />
+
+       <div className="space-y-5">
+          {/* 用餐時段 */}
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Clock size={18} className="text-teal-500"/> 用餐時段</label>
+            <div className="grid grid-cols-3 gap-3">
+                {[
+                  { id: 'breakfast', icon: '🥪', label: '早餐' },
+                  { id: 'lunch', icon: '🍱', label: '午餐' },
+                  { id: 'dinner', icon: '🍲', label: '晚餐' }
+                ].map(opt => (
+                   <button 
+                     key={opt.id}
+                     onClick={() => setTimeFilter(opt.id)}
+                     className={`py-3 rounded-2xl font-bold text-sm transition-all border-2 ${timeFilter === opt.id ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-transparent bg-white text-gray-400 hover:bg-gray-50'}`}
+                   >
+                      <span className="mr-1">{opt.icon}</span> {opt.label}
+                   </button>
+                ))}
             </div>
           </div>
           
-          {/* 升級版距離選單 + 時間提示 */}
-          <div>
-             <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Navigation size={16} className="text-blue-500"/> 距離範圍</label>
-             <div className="relative">
-               <select 
-                 value={distFilter} 
-                 onChange={(e) => setDistFilter(parseInt(e.target.value))}
-                 className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl font-bold outline-none focus:ring-2 focus:ring-blue-500"
-               >
-                 <option value={100}>100 公尺</option>
-                 <option value={300}>300 公尺</option>
-                 <option value={500}>500 公尺</option>
-                 <option value={1000}>1 公里</option>
-                 <option value={2000}>2 公里</option>
-                 <option value={5000}>5 公里</option>
-                 <option value={10000}>10 公里</option>
-               </select>
-               <ChevronDown className="absolute right-4 top-3.5 text-gray-400 pointer-events-none" size={20} />
+          {/* 距離與評分 */}
+          <div className="grid grid-cols-2 gap-4">
+             <div className="space-y-2">
+                 <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Navigation size={18} className="text-blue-500"/> 距離</label>
+                 <div className="relative">
+                   <select 
+                     value={distFilter} 
+                     onChange={(e) => setDistFilter(parseInt(e.target.value))}
+                     className="w-full appearance-none bg-white border-2 border-gray-100 text-gray-700 py-3.5 px-4 rounded-2xl font-bold outline-none focus:border-blue-500 transition-colors"
+                   >
+                     <option value={100}>100m</option>
+                     <option value={300}>300m</option>
+                     <option value={500}>500m</option>
+                     <option value={1000}>1km</option>
+                     <option value={2000}>2km</option>
+                   </select>
+                   <ChevronDown className="absolute right-4 top-4 text-gray-400 pointer-events-none" size={18} />
+                 </div>
              </div>
-             {/* 時間提示小卡 */}
-             <div className="flex gap-2 mt-2 text-[10px] text-gray-500 font-bold bg-gray-50 p-2 rounded-lg justify-between">
-                <span className="flex items-center gap-1"><Footprints size={12}/> 走路 {travelTimes.walk} 分</span>
-                <div className="w-px bg-gray-300"></div>
-                <span className="flex items-center gap-1"><Bike size={12}/> 騎車 {travelTimes.bike} 分</span>
-                <div className="w-px bg-gray-300"></div>
-                <span className="flex items-center gap-1"><Car size={12}/> 開車 {travelTimes.car} 分</span>
+
+             <div className="space-y-2">
+                 <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Star size={18} className="text-yellow-500"/> 評分</label>
+                 <div className="relative">
+                  <select 
+                    value={ratingFilter} 
+                    onChange={(e) => setRatingFilter(e.target.value)}
+                    className="w-full appearance-none bg-white border-2 border-gray-100 text-gray-700 py-3.5 px-4 rounded-2xl font-bold outline-none focus:border-yellow-500 transition-colors"
+                  >
+                    <option value="all">不限</option>
+                    <option value="3">3.0+</option>
+                    <option value="4">4.0+</option>
+                    <option value="4.5">4.5+</option>
+                  </select>
+                  <ChevronDown className="absolute right-4 top-4 text-gray-400 pointer-events-none" size={18} />
+                </div>
              </div>
           </div>
 
-          <div>
-             <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2"><Star size={16} className="text-yellow-500"/> Google 評分要求</label>
-             <div className="relative">
-              <select value={ratingFilter} onChange={(e) => setRatingFilter(e.target.value)} className="w-full appearance-none bg-white border border-gray-200 text-gray-700 py-3 px-4 rounded-xl font-bold outline-none">
-                <option value="all">👌 不限評分</option>
-                <option value="3">3.0 顆星以上</option>
-                <option value="4">4.0 顆星以上</option>
-                <option value="4.5">4.5 顆星以上</option>
-              </select>
-              <ChevronDown className="absolute right-4 top-3.5 text-gray-400 pointer-events-none" size={20} />
-            </div>
+          {/* 交通時間提示 */}
+          <div className="flex gap-2 text-[10px] text-gray-500 font-bold bg-white/50 p-3 rounded-xl border border-gray-100 justify-around">
+            <span className="flex items-center gap-1.5"><Footprints size={14} className="text-gray-400"/> 走 {travelTimes.walk} 分</span>
+            <div className="w-px bg-gray-200 h-4 self-center"></div>
+            <span className="flex items-center gap-1.5"><Bike size={14} className="text-gray-400"/> 騎 {travelTimes.bike} 分</span>
+            <div className="w-px bg-gray-200 h-4 self-center"></div>
+            <span className="flex items-center gap-1.5"><Car size={14} className="text-gray-400"/> 開 {travelTimes.car} 分</span>
           </div>
        </div>
-       <button onClick={executeSearch} className="w-full bg-gray-900 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-gray-200 hover:bg-gray-800 flex items-center justify-center gap-2 mt-8"><Search size={24} /> 開始搜尋</button>
+
+       <button 
+         onClick={executeSearch} 
+         className="w-full bg-gray-900 text-white py-4.5 rounded-2xl font-black text-lg shadow-xl shadow-gray-300 hover:bg-gray-800 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 mt-8"
+       >
+         <Search size={24} /> 
+         開始搜尋
+       </button>
     </div>
   );
 
   const SearchResults = () => (
-    <div className="p-4 space-y-4 pb-24 font-rounded">
-      <div className="flex justify-between items-center mb-2">
-         <button onClick={() => setHasSearched(false)} className="flex items-center gap-1 text-gray-500 font-bold text-sm bg-gray-100 px-3 py-1.5 rounded-xl"><ArrowLeft size={16} /> 調整篩選</button>
-         <div className="text-xs text-gray-400 font-bold">找到 {restaurants.length} 間餐廳</div>
+    <div className="p-4 space-y-4 pb-24 font-rounded bg-gray-50 min-h-full">
+      <div className="flex justify-between items-center mb-2 px-1">
+         <button onClick={() => setHasSearched(false)} className="flex items-center gap-1 text-gray-500 font-bold text-sm bg-white border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors shadow-sm">
+            <ArrowLeft size={16} /> 調整篩選
+         </button>
+         <div className="text-xs text-gray-400 font-bold">
+            <span className="bg-rose-100 text-rose-600 px-2 py-0.5 rounded-md mr-1">{restaurants.length}</span> 間好選擇
+         </div>
       </div>
+      
       {loading ? (
-        <div className="flex flex-col items-center justify-center h-64 space-y-4"><div className="animate-spin text-4xl">🍙</div><p className="text-gray-400 font-bold animate-pulse">正在幫你找好吃的...</p></div>
+        <div className="flex flex-col items-center justify-center h-[60vh] space-y-6">
+           <div className="animate-bounce text-6xl drop-shadow-xl">🍙</div>
+           <p className="text-gray-400 font-bold animate-pulse">正在幫你找好吃的...</p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"><AlertCircle size={18} /> {errorMsg}</div>}
+        <div className="space-y-4">
+          {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 border border-red-100"><AlertCircle size={18} /> <span className="whitespace-pre-line text-left">{errorMsg}</span></div>}
+          
           {restaurants.map(r => (
-            <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-transform flex gap-3">
-              <div className="w-20 h-20 bg-gray-100 rounded-xl flex-shrink-0 flex items-center justify-center text-2xl font-bold text-gray-300 overflow-hidden relative">
-                 {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}
+            <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-[1.5rem] border border-gray-100 shadow-sm active:scale-[0.98] transition-transform flex gap-4 hover:shadow-md cursor-pointer group">
+              <div className="w-24 h-24 bg-gray-100 rounded-2xl flex-shrink-0 flex items-center justify-center text-3xl font-bold text-gray-300 overflow-hidden relative shadow-inner">
+                 {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : r.name.charAt(0)}
               </div>
-              <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                <div><h3 className="font-bold text-gray-800 truncate">{r.name}</h3><p className="text-xs text-gray-400 truncate">{r.type} • {r.address}</p><p className="text-xs text-rose-500 font-medium">距離 {r.distance} km</p></div>
-                <div className="flex justify-between items-end">
-                  <div className="flex gap-2"><StarRating rating={r.rating} /><PriceDisplay level={r.priceLevel} /></div>
-                  <button onClick={(e) => toggleShortlist(e, r)} className={`p-2 rounded-full ${shortlist.some(item => item.id === r.id) ? 'text-rose-500 bg-rose-50' : 'text-gray-300 hover:text-gray-400'}`}><Heart size={18} fill={shortlist.some(item => item.id === r.id) ? "currentColor" : "none"} /></button>
+              <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+                <div>
+                  <h3 className="font-bold text-gray-800 truncate text-lg">{r.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                     <span className="text-xs text-gray-400 truncate bg-gray-50 px-1.5 py-0.5 rounded">{r.type}</span>
+                     <span className="text-xs text-rose-500 font-bold flex items-center gap-0.5"><MapPin size={10}/> {r.distance}km</span>
+                  </div>
+                </div>
+                <div className="flex justify-between items-end mt-2">
+                  <div className="flex gap-2 items-center">
+                     <StarRating rating={r.rating} />
+                     <PriceDisplay level={r.priceLevel} />
+                  </div>
+                  <button 
+                     onClick={(e) => toggleShortlist(e, r)} 
+                     className={`p-2.5 rounded-full transition-colors ${shortlist.some(item => item.id === r.id) ? 'bg-rose-50 text-rose-500' : 'bg-gray-100 text-gray-300 hover:bg-gray-200'}`}
+                  >
+                     <Heart size={18} fill={shortlist.some(item => item.id === r.id) ? "currentColor" : "none"} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -950,55 +1121,64 @@ export default function App() {
   );
 
   const ShortlistScreen = () => (
-    <div className="p-4 pb-24 h-full flex flex-col font-rounded">
-      <h1 className="text-2xl font-black text-gray-800 mb-4">候選清單</h1>
+    <div className="p-4 pb-24 h-full flex flex-col font-rounded bg-gray-50">
+      <div className="flex items-center justify-between mb-6 px-2 pt-2">
+         <h1 className="text-2xl font-black text-gray-800">候選清單</h1>
+         <span className="text-xs font-bold bg-white px-3 py-1 rounded-full text-gray-400 shadow-sm border border-gray-100">{shortlist.length} 間</span>
+      </div>
+
       {shortlist.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-gray-300 gap-4"><Heart size={64} strokeWidth={1} /><p className="text-sm">還沒有加入任何餐廳喔！</p><button onClick={() => setActiveTab('home')} className="px-6 py-2 bg-gray-800 text-white rounded-full text-sm font-bold mt-2">去逛逛</button></div>
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-300 gap-6">
+           <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center"><Heart size={48} strokeWidth={1.5} /></div>
+           <p className="text-sm font-bold">還沒有加入任何餐廳喔！</p>
+           <button onClick={() => setActiveTab('home')} className="px-8 py-3 bg-gray-900 text-white rounded-2xl text-sm font-bold shadow-lg hover:scale-105 transition-transform">去逛逛</button>
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto space-y-4">
-          <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-4 text-white shadow-lg relative overflow-hidden">
-            <Sparkles className="absolute top-2 right-2 text-white/20" size={48} />
-            <h3 className="font-bold flex items-center gap-2 mb-2"><Sparkles size={16}/> AI 幫你選</h3>
+          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2rem] p-6 text-white shadow-lg shadow-indigo-200 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+            <h3 className="font-bold flex items-center gap-2 mb-3 text-lg"><Sparkles size={20} className="text-yellow-300"/> AI 幫你選</h3>
             {aiAnalysis ? (
-              <div className="text-sm bg-white/10 p-3 rounded-xl backdrop-blur-sm leading-relaxed animate-in fade-in">{aiAnalysis}<button onClick={() => setAiAnalysis("")} className="block w-full text-center text-xs mt-2 text-white/70 hover:text-white">清除重來</button></div>
+              <div className="text-sm bg-white/10 p-4 rounded-xl backdrop-blur-md leading-relaxed animate-in fade-in border border-white/10">
+                 {aiAnalysis}
+                 <button onClick={() => setAiAnalysis("")} className="block w-full text-center text-xs mt-3 text-white/50 hover:text-white transition-colors border-t border-white/10 pt-2">清除重來</button>
+              </div>
             ) : (
-              <div><p className="text-xs text-indigo-100 mb-3">猶豫不決嗎？讓 AI 幫你分析這 {shortlist.length} 家餐廳！</p><button onClick={handleAiGroupAnalysis} disabled={isAiAnalyzing} className="w-full py-2 bg-white text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-50 transition-colors">{isAiAnalyzing ? "分析中..." : "✨ 幫我分析"}</button></div>
+              <div>
+                 <p className="text-xs text-indigo-100 mb-4 opacity-90">猶豫不決嗎？讓 AI 毒舌評論家幫你分析這 {shortlist.length} 家餐廳！</p>
+                 <button onClick={handleAiGroupAnalysis} disabled={isAiAnalyzing} className="w-full py-3 bg-white text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-50 transition-colors shadow-sm">{isAiAnalyzing ? "正在思考中..." : "✨ 幫我分析"}</button>
+              </div>
             )}
           </div>
-          <div className="space-y-2">
+          
+          <div className="space-y-3 pb-8">
              {shortlist.map(r => (
-               <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
-                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-400 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}</div>
-                    <div><h4 className="font-bold text-gray-700 text-sm">{r.name}</h4><div className="text-xs text-gray-400 flex gap-2"><span>{r.rating}★</span><span>{r.distance}km</span></div></div>
+               <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
+                 <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center font-bold text-gray-400 overflow-hidden shadow-inner">
+                       {r.photoUrl ? (
+                         <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" />
+                       ) : (
+                         r.name.charAt(0)
+                       )}
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-gray-800 text-sm truncate max-w-[140px]">{r.name}</h4>
+                        <div className="text-[10px] text-gray-400 flex gap-2 font-bold mt-0.5">
+                            <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
+                            <span>{r.distance}km</span>
+                        </div>
+                    </div>
                  </div>
                  <div className="flex gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); handleSystemShare(r); }} className="p-2 text-teal-500 bg-teal-50 rounded-full hover:bg-teal-100"><Share2 size={16} /></button>
-                    <button onClick={(e) => toggleShortlist(e, r)} className="p-2 text-red-400 bg-red-50 rounded-full hover:bg-red-100"><X size={16}/></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleSystemShare(r); }} className="p-2.5 text-teal-600 bg-teal-50 rounded-xl hover:bg-teal-100 transition-colors"><Share2 size={18} /></button>
+                    <button onClick={(e) => toggleShortlist(e, r)} className="p-2.5 text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"><X size={18}/></button>
                  </div>
                </div>
              ))}
           </div>
         </div>
       )}
-    </div>
-  );
-
-  const MapSimulator = () => (
-    <div className="fixed inset-0 z-50 bg-gray-900/95 flex flex-col items-center justify-center p-4 animate-in fade-in font-rounded">
-      <div className="w-full max-w-sm bg-white rounded-3xl overflow-hidden shadow-2xl relative">
-        <div className="p-4 bg-gray-50 border-b flex justify-between items-center"><h3 className="font-bold text-gray-800 flex items-center gap-2"><MapPin className="text-rose-500"/> 調整定位</h3><button onClick={() => setIsMapMode(false)} className="p-2 bg-gray-200 rounded-full"><X size={20}/></button></div>
-        <div className="h-80 bg-blue-50 relative cursor-crosshair" onClick={(e) => {
-               const rect = e.target.getBoundingClientRect();
-               const latOffset = (0.5 - (e.clientY - rect.top) / rect.height) * 0.01;
-               const lngOffset = ((e.clientX - rect.left) / rect.width - 0.5) * 0.01;
-               setVirtualLocation(prev => ({ lat: prev.lat + latOffset, lng: prev.lng + lngOffset }));
-             }}>
-           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
-           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"><div className="w-4 h-4 bg-rose-500 rounded-full border-2 border-white shadow-lg relative z-10"></div><div className="bg-black/70 text-white text-[10px] px-2 py-1 rounded mt-2">目前定位點</div></div>
-        </div>
-        <div className="p-4 space-y-3"><button onClick={() => setVirtualLocation(realLocation)} className="w-full py-3 bg-teal-500 text-white rounded-xl font-bold flex items-center justify-center gap-2"><Locate size={18}/> 回到真實位置</button><button onClick={() => setIsMapMode(false)} className="w-full py-3 bg-gray-800 text-white rounded-xl font-bold">確認位置</button></div>
-      </div>
     </div>
   );
 
@@ -1013,13 +1193,38 @@ export default function App() {
         {activeTab === 'social' && <SocialScreen />}
       </div>
 
-      <div className="h-20 bg-white border-t border-gray-100 flex items-center justify-around px-2 pb-2 fixed bottom-0 w-full max-w-md z-30">
-        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${activeTab === 'home' ? 'text-gray-900' : 'text-gray-300'}`}><Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} /><span className="text-[10px] font-bold">搜尋</span></button>
-        <button onClick={() => setActiveTab('shortlist')} className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors relative ${activeTab === 'shortlist' ? 'text-rose-500' : 'text-gray-300'}`}>
-          <div className="relative"><Heart size={24} strokeWidth={activeTab === 'shortlist' ? 2.5 : 2} />{shortlist.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white">{shortlist.length}</span>}</div><span className="text-[10px] font-bold">清單</span>
+      <div className="h-24 bg-white/90 backdrop-blur-md border-t border-gray-100 flex items-center justify-around px-6 pb-6 fixed bottom-0 w-full max-w-md z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+        <button 
+           onClick={() => setActiveTab('home')} 
+           className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-gray-900 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}
+        >
+           <div className={`p-2 rounded-2xl transition-all ${activeTab === 'home' ? 'bg-gray-100 shadow-sm' : ''}`}>
+             <Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
+           </div>
+           <span className="text-[10px] font-bold">搜尋</span>
         </button>
-        <button onClick={() => setActiveTab('social')} className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors relative ${activeTab === 'social' ? 'text-rose-500' : 'text-gray-300'}`}>
-          <MessageCircle size={24} strokeWidth={activeTab === 'social' ? 2.5 : 2} /><span className="text-[10px] font-bold">揪團</span>
+        
+        <button 
+           onClick={() => setActiveTab('shortlist')} 
+           className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'shortlist' ? 'text-rose-500 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}
+        >
+           <div className={`p-2 rounded-2xl transition-all ${activeTab === 'shortlist' ? 'bg-rose-50 shadow-sm' : ''}`}>
+             <div className="relative">
+                <Heart size={24} strokeWidth={activeTab === 'shortlist' ? 2.5 : 2} />
+                {shortlist.length > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-white animate-pulse"></span>}
+             </div>
+           </div>
+           <span className="text-[10px] font-bold">清單</span>
+        </button>
+
+        <button 
+           onClick={() => setActiveTab('social')} 
+           className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'social' ? 'text-teal-600 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}
+        >
+           <div className={`p-2 rounded-2xl transition-all ${activeTab === 'social' ? 'bg-teal-50 shadow-sm' : ''}`}>
+             <MessageCircle size={24} strokeWidth={activeTab === 'social' ? 2.5 : 2} />
+           </div>
+           <span className="text-[10px] font-bold">揪團</span>
         </button>
       </div>
       <DetailModal />
