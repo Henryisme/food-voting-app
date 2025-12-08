@@ -12,7 +12,7 @@ import {
 import { initializeApp } from "firebase/app";
 import { 
   getFirestore, collection, addDoc, doc, onSnapshot, 
-  updateDoc, arrayUnion, query, where, getDocs, orderBy, deleteDoc, serverTimestamp, getDoc
+  updateDoc, arrayUnion, query, where, getDocs, orderBy, deleteDoc, serverTimestamp, getDoc, setDoc
 } from "firebase/firestore";
 
 // ==========================================
@@ -150,9 +150,8 @@ const calculateTravelTime = (meters) => {
   return { walk, bike, car };
 };
 
-// --- 子組件 ---
+// --- 子組件定義 (全部移至 App 之前) ---
 
-// 地圖選擇器
 const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
   const mapRef = useRef(null);
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
@@ -237,7 +236,6 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   );
 };
 
-// 個人檔案設定 Modal
 const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
   const [localName, setLocalName] = useState(userProfile.name);
   const avatarSeeds = ["Felix", "Maria", "Jack", "Aneka", "Jocelyn", "Granny", "Bear", "Leo", "Zoe", "Max", "Luna", "Tiger"];
@@ -300,7 +298,6 @@ const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
   );
 };
 
-// 房間內新增餐廳的搜尋 Modal (使用 Google Maps)
 const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     const [queryText, setQueryText] = useState("");
     const [results, setResults] = useState([]);
@@ -318,7 +315,6 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
                 maxResultCount: 10,
             });
             
-            // Format
             const formatted = await Promise.all(places.map(async (place) => {
                 let photoUrl = null;
                 if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getURI({ maxWidth: 200 });
@@ -336,7 +332,7 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
                     isOpen: isOpenStatus,
                     lat: place.location.lat(),
                     lng: place.location.lng(),
-                    regularOpeningHours: place.regularOpeningHours // 保存原始物件以便後續使用
+                    regularOpeningHours: place.regularOpeningHours 
                 };
             }));
             setResults(formatted);
@@ -387,11 +383,10 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     );
 };
 
-const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, setShowDetail, virtualLocation }) => {
+const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants }) => {
   const [msgInput, setMsgInput] = useState("");
   const [subTab, setSubTab] = useState("chat"); 
   const messagesEndRef = useRef(null);
-  const [sharedRestaurants, setSharedRestaurants] = useState([]);
   const [showSearchModal, setShowSearchModal] = useState(false);
 
   const getAvatarUrl = () => { if (userProfile.customAvatar) return userProfile.customAvatar; const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`; };
@@ -400,22 +395,11 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
 
   useEffect(() => {
       if (!db || !room?.id) return;
-      const q = query(collection(db, "rooms", room.id, "messages")); // 修正：移除 orderBy
+      const q = query(collection(db, "rooms", room.id, "messages"));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        newMessages.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)); // 前端排序
+        newMessages.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
         setMessages(newMessages);
-      });
-      return () => unsubscribe();
-  }, [room?.id]);
-
-  useEffect(() => {
-      if (!db || !room?.id) return;
-      const q = query(collection(db, "rooms", room.id, "shared_restaurants")); // 修正：移除 orderBy
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); // 前端排序
-          setSharedRestaurants(list);
       });
       return () => unsubscribe();
   }, [room?.id]);
@@ -520,13 +504,12 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                   <div className="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">{item.photoUrl ? <img src={item.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center font-bold text-slate-300">{item.name.charAt(0)}</div>}</div>
                                   <div><h4 className="font-bold text-slate-800 text-lg flex items-center gap-1">{item.name}<ArrowRight size={14} className="text-slate-300"/></h4><p className="text-xs text-slate-400 flex items-center gap-1">由 {item.addedBy} 新增</p></div>
                               </div>
-                              <button onClick={async (e) => { e.stopPropagation(); if(confirm("確定移除？")) await deleteDoc(doc(db, "rooms", room.id, "shared_restaurants", item.id)); }} className="text-slate-300 hover:text-red-400 p-2"><Trash2 size={16}/></button>
+                              <button onClick={(e) => { e.stopPropagation(); removeFromSharedList(item); }} className="text-slate-300 hover:text-red-400 p-2"><Trash2 size={16}/></button>
                           </div>
                           <div className="grid grid-cols-2 gap-2 mt-2">
                               <div className="bg-slate-50 p-2 rounded-xl"><span className="text-[10px] font-bold text-slate-400 block mb-1">我的狀態</span><div className="flex gap-1"><button onClick={() => updateSharedItemStatus(item.id, 'eaten', true)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-slate-200 text-slate-400'}`}><CheckCircle size={10}/> 吃過</button><button onClick={() => updateSharedItemStatus(item.id, 'eaten', false)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-slate-200 text-slate-400'}`}><Circle size={10}/> 沒吃</button></div></div>
                               <div className="bg-slate-50 p-2 rounded-xl"><div className="flex justify-between items-center mb-1"><span className="text-[10px] font-bold text-slate-400">我的評分</span>{item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}</div>
                               
-                              {/* 顯示所有人的評分 */}
                               <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
                                   {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
                                       <div key={user} className="flex justify-between text-[10px] items-center text-slate-500">
@@ -603,10 +586,11 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
     );
 };
 
-const DetailModal = ({ showDetail, setShowDetail, shortlist, toggleShortlist, room, addToSharedList, handleSystemShare, setActiveTab }) => {
+const DetailModal = ({ showDetail, setShowDetail, shortlist, toggleShortlist, room, addToSharedList, removeFromSharedList, handleSystemShare, setActiveTab, sharedRestaurants }) => {
   if (!showDetail) return null;
   const r = showDetail;
   const isShortlisted = shortlist.some(item => item.id === r.id);
+  const isInSharedList = room && sharedRestaurants.some(item => item.id === r.id);
   
   let todayHours = "暫無資料";
   let displayOpeningHours = r.openingHours; 
@@ -651,7 +635,11 @@ const DetailModal = ({ showDetail, setShowDetail, shortlist, toggleShortlist, ro
          <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><Heart size={20} fill={isShortlisted ? "currentColor" : "none"} /></button>
          {room ? (
            <div className="flex-[3] flex gap-2">
-               <button onClick={() => { addToSharedList(r); setShowDetail(null); }} className="flex-1 bg-white border-2 border-teal-500 text-teal-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><List size={16} /> 加入清單</button>
+               {isInSharedList ? (
+                   <button onClick={() => { removeFromSharedList(r); setShowDetail(null); }} className="flex-1 bg-white border-2 border-red-500 text-red-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><Trash2 size={16} /> 移出清單</button>
+               ) : (
+                   <button onClick={() => { addToSharedList(r); setShowDetail(null); }} className="flex-1 bg-white border-2 border-teal-500 text-teal-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><List size={16} /> 加入清單</button>
+               )}
                <button onClick={() => { setShowDetail(null); /* logic to chat */ }} className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-lg shadow-teal-200 hover:shadow-teal-300 transition-all active:scale-95 text-xs"><Send size={16} /> 傳到聊天室</button>
            </div>
          ) : (
@@ -698,6 +686,7 @@ export default function App() {
   const [myRooms, setMyRooms] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [sharedRestaurants, setSharedRestaurants] = useState([]); // Moved up
 
   useEffect(() => {
     // Geo Init
@@ -745,6 +734,19 @@ export default function App() {
       }
   }, [userProfile.name]);
 
+  // Load Shared Restaurants for Current Room
+  useEffect(() => {
+      if (!db || !room?.id) return;
+      const q = query(collection(db, "rooms", room.id, "shared_restaurants")); // Removed orderBy
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); // doc.id is Place ID now
+          list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); // Sort in JS
+          setSharedRestaurants(list);
+      });
+      return () => unsubscribe();
+  }, [room?.id]);
+
+
   const addToSharedList = async (restaurant) => {
     if (!room) {
       alert("請先加入房間才能使用共同清單功能喔！");
@@ -761,7 +763,17 @@ export default function App() {
              };
         }
 
-        await addDoc(collection(db, "rooms", room.id, "shared_restaurants"), {
+        // Use setDoc with restaurant.id as key to avoid duplicates and allow direct deletion
+        // Check if exists first to avoid overwriting ratings?
+        const docRef = doc(db, "rooms", room.id, "shared_restaurants", restaurant.id);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            alert(`「${restaurant.name}」已經在共同清單中了！`);
+            return;
+        }
+
+        await setDoc(docRef, {
           name: restaurant.name || "未命名餐廳",
           address: restaurant.address || "",
           addedBy: userProfile.name,
@@ -776,18 +788,29 @@ export default function App() {
           userRatingsTotal: restaurant.userRatingsTotal || 0,
           priceLevel: restaurant.priceLevel || 0,
           isOpen: restaurant.isOpen === true, // Ensure boolean
-          lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0), // Handle if it's a function from GMaps
+          lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0), 
           lng: typeof restaurant.lng === 'function' ? restaurant.lng() : (restaurant.lng || 0),
-          regularOpeningHours: simpleOpeningHours // Use sanitized version
+          regularOpeningHours: simpleOpeningHours 
         });
         alert(`已將「${restaurant.name}」加入共同清單！`);
       } catch (e) {
-        console.error("Firebase Add Error:", e); // Add logging for easier debugging
+        console.error("Firebase Add Error:", e); 
         alert("加入失敗，請稍後再試。(" + e.message + ")");
       }
     } else {
       alert("單機模式暫不支援共同清單功能");
     }
+  };
+
+  const removeFromSharedList = async (restaurant) => {
+     if (!db || !room) return;
+     if (!confirm("確定要從共同清單中移除這間餐廳嗎？")) return;
+     try {
+         await deleteDoc(doc(db, "rooms", room.id, "shared_restaurants", restaurant.id));
+     } catch (e) {
+         console.error("Remove Error:", e);
+         alert("移除失敗");
+     }
   };
 
   const executeSearch = async () => {
@@ -854,14 +877,6 @@ export default function App() {
       const exists = prev.some(item => item.id === restaurant.id);
       return exists ? prev.filter(item => item.id !== restaurant.id) : [...prev, restaurant];
     });
-  };
-
-  const handleAiGroupAnalysis = async () => {
-    setIsAiAnalyzing(true);
-    const names = shortlist.map(r => r.name).join("、");
-    const result = await callGemini(`我們正在猶豫：${names}。請扮演美食評論家，用 100 字幫我們決定！`);
-    setAiAnalysis(result);
-    setIsAiAnalyzing(false);
   };
 
   const handleSystemShare = (restaurant) => {
@@ -1088,9 +1103,11 @@ export default function App() {
                     setMessages={setMessages} 
                     db={db} 
                     addToSharedList={addToSharedList} 
+                    removeFromSharedList={removeFromSharedList}
                     onBack={() => setRoom(null)} 
                     setShowDetail={setShowDetail} 
                     virtualLocation={virtualLocation}
+                    sharedRestaurants={sharedRestaurants}
                 />
             ) : (
                 <LobbyView 
@@ -1116,8 +1133,10 @@ export default function App() {
         toggleShortlist={toggleShortlist}
         room={room}
         addToSharedList={addToSharedList}
+        removeFromSharedList={removeFromSharedList}
         handleSystemShare={handleSystemShare}
         setActiveTab={() => {}} 
+        sharedRestaurants={sharedRestaurants}
       />
     </div>
   );
