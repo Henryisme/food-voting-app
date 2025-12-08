@@ -4,7 +4,8 @@ import {
   Share2, Sparkles, X, Home, Settings, List, ChevronLeft, 
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
-  Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight
+  Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
+  Minimize2, Maximize2
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -18,7 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";         
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -127,13 +128,13 @@ const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
         return (
           <div
             key={index}
-            className={`relative w-6 h-6 ${readOnly ? '' : 'cursor-pointer'}`}
+            className={`relative w-5 h-5 ${readOnly ? '' : 'cursor-pointer'}`}
             onMouseMove={(e) => handleMouseMove(e, index)}
             onClick={() => !readOnly && onChange(hoverValue)}
           >
-            <Star size={20} className="text-slate-200 absolute top-0 left-0" />
+            <Star size={18} className="text-slate-200 absolute top-0 left-0" />
             <div className="absolute top-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-               <Star size={20} className="text-yellow-400 fill-yellow-400" />
+               <Star size={18} className="text-yellow-400 fill-yellow-400" />
             </div>
           </div>
         );
@@ -151,6 +152,7 @@ const calculateTravelTime = (meters) => {
 
 // --- 子組件 ---
 
+// 地圖選擇器
 const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
   const mapRef = useRef(null);
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
@@ -164,38 +166,89 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
     if (!mapRef.current) return;
 
     try {
-      const map = new window.google.maps.Map(mapRef.current, { center: initialLocation, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
-      const marker = new window.google.maps.Marker({ position: initialLocation, map: map, draggable: true, animation: window.google.maps.Animation.DROP, title: "拖曳我來修改位置" });
-      map.addListener("click", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; marker.setPosition(newLoc); setSelectedLoc(newLoc); map.panTo(newLoc); });
-      marker.addListener("dragend", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; setSelectedLoc(newLoc); map.panTo(newLoc); });
-    } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
+      const map = new window.google.maps.Map(mapRef.current, {
+        center: initialLocation,
+        zoom: 15,
+        disableDefaultUI: true, 
+        clickableIcons: false,
+        mapId: "DEMO_MAP_ID" 
+      });
+
+      const marker = new window.google.maps.Marker({
+        position: initialLocation,
+        map: map,
+        draggable: true,
+        animation: window.google.maps.Animation.DROP,
+        title: "拖曳我來修改位置"
+      });
+
+      map.addListener("click", (e) => {
+        const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        marker.setPosition(newLoc);
+        setSelectedLoc(newLoc);
+        map.panTo(newLoc);
+      });
+
+      marker.addListener("dragend", (e) => {
+        const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+        setSelectedLoc(newLoc);
+        map.panTo(newLoc);
+      });
+    } catch (e) {
+      setMapError("地圖載入發生錯誤：" + e.message);
+    }
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-white flex flex-col animate-in fade-in font-rounded">
+    <div className="fixed inset-0 z-50 bg-white flex flex-col animate-in fade-in font-rounded">
       <div className="p-4 bg-white/80 backdrop-blur-md border-b flex justify-between items-center shadow-sm z-10 absolute top-0 w-full">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
-        <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
+        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+          <MapPin className="text-rose-500" /> 修改目前位置
+        </h3>
+        <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200">
+          <X size={20} />
+        </button>
       </div>
       <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-20">
-        {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
+        {mapError ? (
+            <div className="text-center p-6 bg-white rounded-xl shadow-sm">
+                <AlertCircle className="mx-auto text-red-500 mb-2" size={32} />
+                <p className="text-slate-600 font-bold">{mapError}</p>
+                <button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button>
+            </div>
+        ) : <div ref={mapRef} className="w-full h-full" />}
         {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
       </div>
       <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-         <div className="flex justify-between text-xs text-slate-500 px-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
+         <div className="flex justify-between text-xs text-slate-500 px-1">
+            <span>經度: {selectedLoc?.lng.toFixed(5)}</span>
+            <span>緯度: {selectedLoc?.lat.toFixed(5)}</span>
+         </div>
          <div className="flex gap-2">
-            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
-            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認修改</button>
+            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors">
+              <Locate size={18}/> 真實 GPS
+            </button>
+            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">
+              確認修改
+            </button>
          </div>
       </div>
     </div>
   );
 };
 
+// 個人檔案設定 Modal
 const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
   const [localName, setLocalName] = useState(userProfile.name);
   const avatarSeeds = ["Felix", "Maria", "Jack", "Aneka", "Jocelyn", "Granny", "Bear", "Leo", "Zoe", "Max", "Luna", "Tiger"];
-  const handleFileUpload = (e) => { const file = e.target.files[0]; if (file) { const url = URL.createObjectURL(file); setUserProfile(prev => ({ ...prev, customAvatar: url })); } };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setUserProfile(prev => ({ ...prev, customAvatar: url }));
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4 animate-in fade-in font-rounded backdrop-blur-sm">
@@ -205,18 +258,49 @@ const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
         <div className="flex flex-col items-center gap-4 mb-6">
           <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-rose-200 relative group shadow-lg ring-4 ring-rose-50">
              <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Avatar" className="w-full h-full object-cover" />
-             <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs font-bold backdrop-blur-sm"><Camera size={24} className="mb-1"/><input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} /></label>
+             <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs font-bold backdrop-blur-sm">
+                <Camera size={24} className="mb-1"/>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+             </label>
           </div>
-          <input type="text" value={localName} onChange={(e) => setLocalName(e.target.value)} className="text-center font-bold text-xl border-b-2 border-slate-200 focus:border-rose-500 outline-none pb-2 w-3/4 bg-transparent transition-colors" placeholder="輸入暱稱"/>
+          <input 
+            type="text" 
+            value={localName}
+            onChange={(e) => setLocalName(e.target.value)}
+            className="text-center font-bold text-xl border-b-2 border-slate-200 focus:border-rose-500 outline-none pb-2 w-3/4 bg-transparent transition-colors"
+            placeholder="輸入暱稱"
+          />
         </div>
-        <div className="space-y-3 mb-6"><label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">形象風格</label><div className="flex gap-3 bg-slate-100 p-1 rounded-2xl"><button onClick={() => setUserProfile({...userProfile, gender: 'male', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'male' && !userProfile.customAvatar ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><User size={18} /> 男生</button><button onClick={() => setUserProfile({...userProfile, gender: 'female', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'female' && !userProfile.customAvatar ? 'bg-white text-rose-500 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}><User size={18} /> 女生</button></div></div>
-        <div className="space-y-3"><label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">快速選擇頭像</label><div className="grid grid-cols-4 gap-3">{avatarSeeds.map(seed => (<div key={seed} onClick={() => setUserProfile({...userProfile, customAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`})} className="aspect-square rounded-2xl bg-slate-50 overflow-hidden cursor-pointer hover:ring-4 hover:ring-rose-200 transition-all shadow-sm border border-slate-100"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`} className="w-full h-full object-cover" /></div>))}</div></div>
-        <button onClick={() => { setUserProfile(prev => ({...prev, name: localName})); onClose(); }} className="w-full mt-8 bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg shadow-slate-300 hover:bg-slate-800 active:scale-95 transition-all">儲存設定</button>
+        <div className="space-y-3 mb-6">
+           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">形象風格</label>
+           <div className="flex gap-3 bg-slate-100 p-1 rounded-2xl">
+              <button onClick={() => setUserProfile({...userProfile, gender: 'male', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'male' && !userProfile.customAvatar ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                 <User size={18} /> 男生
+              </button>
+              <button onClick={() => setUserProfile({...userProfile, gender: 'female', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'female' && !userProfile.customAvatar ? 'bg-white text-rose-500 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>
+                 <User size={18} /> 女生
+              </button>
+           </div>
+        </div>
+        <div className="space-y-3">
+           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">快速選擇頭像</label>
+           <div className="grid grid-cols-4 gap-3">
+              {avatarSeeds.map(seed => (
+                 <div key={seed} onClick={() => setUserProfile({...userProfile, customAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`})} className="aspect-square rounded-2xl bg-slate-50 overflow-hidden cursor-pointer hover:ring-4 hover:ring-rose-200 transition-all shadow-sm border border-slate-100">
+                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`} className="w-full h-full object-cover" />
+                 </div>
+              ))}
+           </div>
+        </div>
+        <button onClick={() => { setUserProfile(prev => ({...prev, name: localName})); onClose(); }} className="w-full mt-8 bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg shadow-slate-300 hover:bg-slate-800 active:scale-95 transition-all">
+           儲存設定
+        </button>
       </div>
     </div>
   );
 };
 
+// 房間內新增餐廳的搜尋 Modal (使用 Google Maps)
 const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     const [queryText, setQueryText] = useState("");
     const [results, setResults] = useState([]);
@@ -233,32 +317,66 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
                 locationBias: virtualLocation ? { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: 1000 } : undefined,
                 maxResultCount: 10,
             });
+            
+            // Format
             const formatted = await Promise.all(places.map(async (place) => {
                 let photoUrl = null;
                 if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getURI({ maxWidth: 200 });
                 let isOpenStatus = null;
                 try { isOpenStatus = await place.isOpen(); } catch(e) {}
+                
                 return {
-                    id: place.id, name: place.displayName, type: place.types?.[0] || "餐廳", rating: place.rating, priceLevel: place.priceLevel, address: place.formattedAddress, photoUrl, isOpen: isOpenStatus, lat: place.location.lat(), lng: place.location.lng(), regularOpeningHours: place.regularOpeningHours 
+                    id: place.id,
+                    name: place.displayName,
+                    type: place.types?.[0] || "餐廳",
+                    rating: place.rating,
+                    priceLevel: place.priceLevel,
+                    address: place.formattedAddress,
+                    photoUrl,
+                    isOpen: isOpenStatus,
+                    lat: place.location.lat(),
+                    lng: place.location.lng(),
+                    regularOpeningHours: place.regularOpeningHours // 保存原始物件以便後續使用
                 };
             }));
             setResults(formatted);
-        } catch(e) { console.error(e); alert("搜尋失敗"); } finally { setLoading(false); }
+        } catch(e) {
+            console.error(e);
+            alert("搜尋失敗");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <div className="fixed inset-0 bg-black/50 z-[80] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-md h-[80vh] flex flex-col shadow-2xl animate-in zoom-in font-rounded overflow-hidden">
                 <div className="p-4 border-b border-slate-100 flex items-center gap-2">
-                    <input className="flex-1 bg-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500" placeholder="輸入餐廳名稱..." value={queryText} onChange={e => setQueryText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} autoFocus />
+                    <input 
+                        className="flex-1 bg-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500"
+                        placeholder="輸入餐廳名稱..."
+                        value={queryText}
+                        onChange={e => setQueryText(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                        autoFocus
+                    />
                     <button onClick={onClose} className="p-3 bg-slate-100 rounded-xl hover:bg-slate-200"><X size={20}/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
                     {loading && <div className="text-center text-slate-400 py-10">搜尋中...</div>}
                     {results.map(r => (
                         <div key={r.id} onClick={() => onSelect(r)} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm flex gap-3 cursor-pointer hover:border-rose-300 transition-colors">
-                            <div className="w-16 h-16 bg-slate-100 rounded-lg flex-shrink-0 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-300 text-xl font-bold">{r.name.charAt(0)}</div>}</div>
-                            <div className="flex-1 min-w-0"><h4 className="font-bold text-slate-800 truncate">{r.name}</h4><p className="text-xs text-slate-500 truncate">{r.address}</p><div className="flex items-center gap-2 mt-1 text-xs"><span className="flex items-center text-yellow-500 font-bold"><Star size={10} fill="currentColor" className="mr-0.5"/>{r.rating}</span><span className={r.isOpen ? "text-green-600" : "text-red-500"}>{r.isOpen ? "營業中" : "休息中"}</span></div></div>
+                            <div className="w-16 h-16 bg-slate-100 rounded-lg flex-shrink-0 overflow-hidden">
+                                {r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-300 text-xl font-bold">{r.name.charAt(0)}</div>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="font-bold text-slate-800 truncate">{r.name}</h4>
+                                <p className="text-xs text-slate-500 truncate">{r.address}</p>
+                                <div className="flex items-center gap-2 mt-1 text-xs">
+                                    <span className="flex items-center text-yellow-500 font-bold"><Star size={10} fill="currentColor" className="mr-0.5"/>{r.rating}</span>
+                                    <span className={r.isOpen ? "text-green-600" : "text-red-500"}>{r.isOpen ? "營業中" : "休息中"}</span>
+                                </div>
+                            </div>
                             <button className="self-center p-2 bg-rose-50 text-rose-500 rounded-full"><Plus size={18}/></button>
                         </div>
                     ))}
@@ -394,7 +512,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
               </div>
           ) : (
               <div className="p-4 space-y-4 pb-24">
-                  <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-slate-300 rounded-2xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:border-rose-300 hover:text-rose-500 transition-colors"><Plus size={20}/> 新增餐廳到清單</button>
+                  <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-slate-300 rounded-xl text-slate-400 font-bold flex items-center justify-center gap-2 hover:border-rose-300 hover:text-rose-500 transition-colors"><Plus size={20}/> 新增餐廳到清單</button>
                   {sharedRestaurants.map(item => (
                       <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-3 relative group">
                           <div className="flex justify-between items-start cursor-pointer" onClick={() => setShowDetail(item)}>
@@ -439,7 +557,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   );
 };
 
-const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal }) => {
+const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal, onDeleteRoom }) => {
     const [joinCodeInput, setJoinCodeInput] = useState("");
 
     return (
@@ -458,7 +576,15 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
                      {myRooms.map(r => (
                          <div key={r.id} onClick={() => onEnterRoom(r)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                              <div><h3 className="font-bold text-slate-800">{r.name}</h3><span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-mono">#{r.code}</span></div>
-                             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-rose-50 group-hover:text-rose-500 transition-colors"><ArrowRight size={16}/></div>
+                             <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }}
+                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
+                                <ArrowRight size={16} className="text-slate-300 group-hover:text-rose-500"/>
+                             </div>
                          </div>
                      ))}
                  </div>
@@ -574,10 +700,7 @@ export default function App() {
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomCodeFromUrl = urlParams.get('room');
-    if (roomCodeFromUrl) setActiveTab('social');
-
+    // Geo Init
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -586,7 +709,7 @@ export default function App() {
           setVirtualLocation(loc);
         },
         () => {
-          const defaultLoc = { lat: 25.0330, lng: 121.5654 }; 
+          const defaultLoc = { lat: 25.0330, lng: 121.5654 }; // Taipei
           setRealLocation(defaultLoc);
           setVirtualLocation(defaultLoc);
         }
@@ -630,8 +753,16 @@ export default function App() {
     }
     if (db) {
       try {
+        // Sanitize regularOpeningHours to be plain JSON or null
+        let simpleOpeningHours = null;
+        if (restaurant.regularOpeningHours && restaurant.regularOpeningHours.weekdayDescriptions) {
+             simpleOpeningHours = {
+                 weekdayDescriptions: restaurant.regularOpeningHours.weekdayDescriptions
+             };
+        }
+
         await addDoc(collection(db, "rooms", room.id, "shared_restaurants"), {
-          name: restaurant.name,
+          name: restaurant.name || "未命名餐廳",
           address: restaurant.address || "",
           addedBy: userProfile.name,
           type: restaurant.type || "美食",
@@ -639,18 +770,20 @@ export default function App() {
           ratings: {}, 
           eatenStatus: {}, 
           createdAt: serverTimestamp(),
-          id: restaurant.id, 
-          rating: restaurant.rating,
-          userRatingsTotal: restaurant.userRatingsTotal,
-          priceLevel: restaurant.priceLevel,
-          isOpen: restaurant.isOpen,
-          lat: restaurant.lat,
-          lng: restaurant.lng,
-          regularOpeningHours: restaurant.regularOpeningHours || null
+          // Store raw data for opening detail later
+          id: restaurant.id || "unknown_id", // Place ID
+          rating: restaurant.rating || 0,
+          userRatingsTotal: restaurant.userRatingsTotal || 0,
+          priceLevel: restaurant.priceLevel || 0,
+          isOpen: restaurant.isOpen === true, // Ensure boolean
+          lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0), // Handle if it's a function from GMaps
+          lng: typeof restaurant.lng === 'function' ? restaurant.lng() : (restaurant.lng || 0),
+          regularOpeningHours: simpleOpeningHours // Use sanitized version
         });
         alert(`已將「${restaurant.name}」加入共同清單！`);
       } catch (e) {
-        alert("加入失敗，請稍後再試。");
+        console.error("Firebase Add Error:", e); // Add logging for easier debugging
+        alert("加入失敗，請稍後再試。(" + e.message + ")");
       }
     } else {
       alert("單機模式暫不支援共同清單功能");
@@ -784,6 +917,20 @@ export default function App() {
           const newRoom = { id: "local", code, name: roomName, members: [userProfile.name] };
           setRoom(newRoom);
           setActiveTab('social');
+      }
+  };
+
+  const onDeleteRoom = async (roomId) => {
+      if (!confirm("確定要刪除這個房間嗎？\n注意：這將會移除所有人的聊天記錄與清單。")) return;
+      if (db) {
+          try {
+              await deleteDoc(doc(db, "rooms", roomId));
+          } catch (e) {
+              console.error("刪除失敗", e);
+              alert("刪除失敗");
+          }
+      } else {
+           setMyRooms(prev => prev.filter(r => r.id !== roomId));
       }
   };
 
@@ -953,6 +1100,7 @@ export default function App() {
                     onCreateRoom={onCreateRoom}
                     onEnterRoom={(r) => setRoom(r)}
                     setShowProfileModal={setShowProfileModal}
+                    onDeleteRoom={onDeleteRoom}
                 />
             )
         )}
