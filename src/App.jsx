@@ -4,7 +4,7 @@ import {
   Copy, Crown, Share2, Sparkles, X, Home, Settings, List, ChevronLeft, 
   Locate, Map, Send, AlertCircle, Clock, Filter, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
-  Bike, Car, Footprints
+  Bike, Car, Footprints, Vote
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -17,9 +17,9 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 請直接填入您的 Key (請確保已啟用 "Places API (New)")
+// 若在 Vercel 請使用 import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -63,7 +63,6 @@ const loadGoogleMapsScript = (apiKey) => {
   if (window.google && window.google.maps) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    // 加入 loading=async 並指定版本
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&v=weekly`;
     script.async = true;
     script.defer = true;
@@ -231,7 +230,6 @@ export default function App() {
 
   const [userProfile, setUserProfile] = useState({
     name: '美食探險家',
-    gender: 'male', 
     customAvatar: null
   });
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -310,8 +308,8 @@ export default function App() {
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; 
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+    // 預設頭像如果沒有選擇，隨機一個
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`;
   };
 
   const handleFileUpload = (e) => {
@@ -416,6 +414,7 @@ export default function App() {
     }
   };
 
+  // 分享餐廳 - 預設不開啟投票，只分享資訊
   const shareRestaurantToRoom = async (restaurant) => {
     if (!room) {
       alert("請先建立或加入一個房間喔！");
@@ -425,9 +424,10 @@ export default function App() {
     const msgData = {
       sender: userProfile.name,
       avatar: getAvatarUrl(),
-      text: `我想吃這家！`,
+      text: `分享了一家餐廳：`,
       type: 'share',
       restaurant: restaurant,
+      votingEnabled: false, // 預設關閉投票
       votes: 0,
       voters: [],
       createdAt: new Date()
@@ -439,6 +439,23 @@ export default function App() {
     }
     setActiveTab('social');
     setShowDetail(null);
+  };
+
+  // 開啟投票功能
+  const enableVoting = async (msgId) => {
+    if (db && room) {
+      const msgRef = doc(db, "rooms", room.id, "messages", msgId);
+      await updateDoc(msgRef, {
+        votingEnabled: true
+      });
+    } else {
+      setMessages(prev => prev.map(msg => {
+        if (msg.id === msgId) {
+          return { ...msg, votingEnabled: true };
+        }
+        return msg;
+      }));
+    }
   };
 
   const voteForMessage = async (msgId, currentVoters, currentVotes) => {
@@ -502,7 +519,7 @@ export default function App() {
                 radius: distFilter,
             },
             maxResultCount: 20,
-            isOpenNow: false, 
+            isOpenNow: true, // 🔥 只搜尋營業中的店家
         });
 
         clearTimeout(timeoutId);
@@ -510,7 +527,6 @@ export default function App() {
         isSearchingRef.current = false;
 
         if (places && places.length > 0) {
-            // 🔥 使用 Promise.all 來處理非同步的 isOpen() 查詢
             const formatted = await Promise.all(places.map(async (place) => {
                 let photoUrl = null;
                 if (place.photos && place.photos.length > 0) {
@@ -527,14 +543,18 @@ export default function App() {
                     pLevel = place.priceLevel;
                 }
 
-                // 修正 isOpen 取得方式
+                // Get Open Status
                 let isOpenStatus = null;
-                try {
-                    // New Places API: isOpen() 是一個非同步方法，必須 await
-                    isOpenStatus = await place.isOpen();
-                } catch(e) {
-                    // 如果無法判斷，則保持 null
-                    console.warn("Could not retrieve isOpen status", e);
+                try { isOpenStatus = await place.isOpen(); } catch(e) { }
+                
+                // Get Opening Hours Text
+                let openingText = "營業時間未知";
+                if (place.regularOpeningHours && place.regularOpeningHours.weekdayDescriptions) {
+                    // 簡單取今天的
+                    const todayIndex = new Date().getDay();
+                    // Google Sunday=0, weekdayDescriptions usually starts Monday=0 or Sunday=0 depending on locale
+                    // 這裡簡化處理，直接存整個陣列，顯示時再處理
+                    openingText = place.regularOpeningHours.weekdayDescriptions;
                 }
 
                 return {
@@ -544,7 +564,8 @@ export default function App() {
                     rating: place.rating,
                     userRatingsTotal: place.userRatingCount,
                     priceLevel: pLevel,
-                    isOpen: isOpenStatus, // 正確填入狀態
+                    isOpen: isOpenStatus,
+                    openingHours: openingText, // 新增營業時間欄位
                     lat: place.location.lat(),
                     lng: place.location.lng(),
                     distance: calculateDistance(
@@ -565,7 +586,8 @@ export default function App() {
                 filtered = filtered.filter(r => (r.rating || 0) >= minRating);
             }
             
-            filtered.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+            // 🔥 排序改為：評分高 -> 低
+            filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
 
             if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
             setRestaurants(filtered);
@@ -616,38 +638,66 @@ export default function App() {
 
   // --- Screens ---
 
-  const ProfileModal = () => (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in font-rounded">
-      <div className="bg-white w-full max-w-sm rounded-3xl p-6 relative">
-        <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full"><X size={20}/></button>
-        <h2 className="text-xl font-black text-gray-800 mb-6 text-center">設定個人檔案</h2>
-        <div className="flex flex-col items-center gap-4 mb-6">
-          <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-rose-100 relative group">
-             <img src={getAvatarUrl()} alt="Avatar" className="w-full h-full object-cover" />
-             <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs">
-                <Camera size={20} className="mb-1"/>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-             </label>
+  const ProfileModal = () => {
+    const [localName, setLocalName] = useState(userProfile.name);
+    // 預設頭像列表
+    const avatarSeeds = ["Felix", "Maria", "Jack", "Aneka", "Jocelyn", "Granny", "Bear", "Leo", "Zoe", "Max", "Luna", "Tiger"];
+
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-in fade-in font-rounded">
+        <div className="bg-white w-full max-w-sm rounded-3xl p-6 relative max-h-[90vh] overflow-y-auto">
+          <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full"><X size={20}/></button>
+          <h2 className="text-xl font-black text-gray-800 mb-6 text-center">設定個人檔案</h2>
+          
+          {/* 預覽 & 上傳 */}
+          <div className="flex flex-col items-center gap-4 mb-6">
+            <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-rose-100 relative group shadow-md">
+               <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Avatar" className="w-full h-full object-cover" />
+               <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs">
+                  <Camera size={20} className="mb-1"/>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+               </label>
+            </div>
+            
+            {/* 修正：使用 Local State 控制輸入，避免中文輸入法問題 */}
+            <input 
+              type="text" 
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              className="text-center font-bold text-lg border-b-2 border-gray-200 focus:border-rose-500 outline-none pb-1 w-2/3"
+              placeholder="輸入暱稱"
+            />
           </div>
-          <input 
-            type="text" 
-            value={userProfile.name}
-            onChange={(e) => setUserProfile({...userProfile, name: e.target.value})}
-            className="text-center font-bold text-lg border-b-2 border-gray-200 focus:border-rose-500 outline-none pb-1 w-2/3"
-            placeholder="輸入暱稱"
-          />
+  
+          {/* 頭像選擇 */}
+          <div className="space-y-3">
+             <label className="text-sm font-bold text-gray-500">選擇頭像</label>
+             <div className="grid grid-cols-4 gap-2">
+                {avatarSeeds.map(seed => (
+                   <div 
+                      key={seed}
+                      onClick={() => setUserProfile({...userProfile, customAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`})}
+                      className="aspect-square rounded-xl bg-gray-100 overflow-hidden cursor-pointer hover:ring-2 hover:ring-rose-500 transition-all"
+                   >
+                      <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`} className="w-full h-full object-cover" />
+                   </div>
+                ))}
+             </div>
+          </div>
+  
+          <button 
+             onClick={() => {
+                setUserProfile(prev => ({...prev, name: localName}));
+                setShowProfileModal(false);
+             }} 
+             className="w-full mt-8 bg-gray-900 text-white py-3 rounded-xl font-bold"
+          >
+             儲存設定
+          </button>
         </div>
-        <div className="space-y-3">
-           <label className="text-sm font-bold text-gray-500">選擇預設形象</label>
-           <div className="flex gap-4">
-              <button onClick={() => setUserProfile({...userProfile, gender: 'male', customAvatar: null})} className={`flex-1 py-3 rounded-xl border-2 font-bold ${userProfile.gender === 'male' && !userProfile.customAvatar ? 'border-rose-500 bg-rose-50 text-rose-600' : 'border-gray-100 text-gray-400'}`}>👦 男生</button>
-              <button onClick={() => setUserProfile({...userProfile, gender: 'female', customAvatar: null})} className={`flex-1 py-3 rounded-xl border-2 font-bold ${userProfile.gender === 'female' && !userProfile.customAvatar ? 'border-rose-500 bg-rose-50 text-rose-600' : 'border-gray-100 text-gray-400'}`}>👧 女生</button>
-           </div>
-        </div>
-        <button onClick={() => setShowProfileModal(false)} className="w-full mt-8 bg-gray-900 text-white py-3 rounded-xl font-bold">儲存設定</button>
       </div>
-    </div>
-  );
+    );
+  };
 
   const SocialScreen = () => {
     const [msgInput, setMsgInput] = useState("");
@@ -689,19 +739,30 @@ export default function App() {
               return (
                  <div key={msg.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
                     {!isMe && (<div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0"><img src={msg.avatar} className="w-full h-full object-cover" /></div>)}
-                    <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
+                    <div className={`max-w-[85%] ${isMe ? 'items-end' : 'items-start'} flex flex-col`}>
                        <span className="text-[10px] text-gray-400 mb-1 px-1">{msg.sender}</span>
                        {msg.type === 'text' ? (
                           <div className={`px-4 py-2 rounded-2xl text-sm ${isMe ? 'bg-rose-500 text-white rounded-tr-none' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'}`}>{msg.text}</div>
                        ) : (
-                          <div className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-rose-200' : 'border-gray-200'} shadow-sm w-48`}>
+                          // Restaurant Share Card (Updated Logic)
+                          <div className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-rose-200' : 'border-gray-200'} shadow-sm w-56`}>
                              <div className="w-full h-24 bg-gray-100 rounded-lg mb-2 overflow-hidden relative">
                                 {msg.restaurant.photoUrl ? (<img src={msg.restaurant.photoUrl} className="w-full h-full object-cover" />) : (<div className="w-full h-full flex items-center justify-center text-3xl text-gray-300 font-bold">{msg.restaurant.name.charAt(0)}</div>)}
                                 <div className="absolute top-1 right-1 bg-white/90 px-1.5 py-0.5 rounded text-[10px] font-bold text-orange-500 flex items-center gap-1"><Star size={8} fill="currentColor"/> {msg.restaurant.rating}</div>
                              </div>
                              <h4 className="font-bold text-sm text-gray-800 truncate">{msg.restaurant.name}</h4>
-                             <p className="text-xs text-gray-400 truncate mb-2">{msg.restaurant.type}</p>
-                             <button onClick={() => voteForMessage(msg.id, msg.voters, msg.votes)} className={`w-full py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}><ThumbsUp size={12} /> {msg.votes || 0} 票</button>
+                             <p className="text-xs text-gray-400 truncate mb-3">{msg.restaurant.type}</p>
+                             
+                             {/* 投票控制區 */}
+                             {msg.votingEnabled ? (
+                                <button onClick={() => voteForMessage(msg.id, msg.voters, msg.votes)} className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                                   <ThumbsUp size={14} /> {msg.votes || 0} 票
+                                </button>
+                             ) : (
+                                <button onClick={() => enableVoting(msg.id)} className="w-full py-2 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-rose-100">
+                                   <Vote size={14} /> 發起投票
+                                </button>
+                             )}
                           </div>
                        )}
                     </div>
@@ -722,6 +783,21 @@ export default function App() {
     if (!showDetail) return null;
     const r = showDetail;
     const isShortlisted = shortlist.some(item => item.id === r.id);
+    
+    // 當日營業時間處理
+    let todayHours = "暫無資料";
+    if (Array.isArray(r.openingHours)) {
+       const day = new Date().getDay(); // 0 is Sunday
+       // Google API: 0=Sunday, Array usually matches 0-6
+       // 但 New Places API weekdayDescriptions 順序不一定，這裡簡單顯示全部或當天
+       // 為求精簡，顯示全部會太多，我們嘗試找今天的
+       const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+       const todayStr = daysMap[day];
+       const todayInfo = r.openingHours.find(h => h.includes(todayStr) || h.includes(todayStr.substring(0, 3))); // 簡單比對
+       if (todayInfo) todayHours = todayInfo;
+       else if(r.openingHours.length > 0) todayHours = r.openingHours[(day + 6) % 7]; // Fallback mapping
+    }
+
     return (
       <div className="fixed inset-0 z-40 bg-white flex flex-col animate-in slide-in-from-right duration-300 font-rounded">
         <div className="h-64 bg-gray-200 relative group">
@@ -732,9 +808,16 @@ export default function App() {
         </div>
         <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
           <div className="flex justify-between items-start mb-2"><h2 className="text-2xl font-black text-gray-800">{r.name}</h2><div className="flex flex-col items-end"><PriceDisplay level={r.priceLevel} /><span className={`text-[10px] mt-1 px-1.5 py-0.5 rounded ${r.isOpen !== null ? (r.isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') : 'bg-gray-100 text-gray-500'}`}>{r.isOpen !== null ? (r.isOpen ? '營業中' : '休息中') : '營業時間未知'}</span></div></div>
-          <div className="flex items-center gap-2 mb-6 text-sm"><StarRating rating={r.rating} /> <span className="text-gray-400">({r.userRatingsTotal} 評論)</span></div>
+          <div className="flex items-center gap-2 mb-4 text-sm"><StarRating rating={r.rating} /> <span className="text-gray-400">({r.userRatingsTotal} 評論)</span></div>
+          
+          {/* 營業時間顯示區 */}
+          <div className="bg-blue-50 p-3 rounded-xl mb-4 text-xs text-blue-800 flex flex-col gap-1">
+             <span className="font-bold flex items-center gap-1"><Clock size={14}/> 今日營業時間</span>
+             <span className="pl-5">{todayHours}</span>
+          </div>
+
           <div className="space-y-4">
-             <div className="bg-gray-50 p-4 rounded-xl flex items-center gap-3"><MapPin className="text-gray-400" size={20} /><div className="flex-1"><p className="text-sm text-gray-800">{r.address}</p><p className="text-xs text-gray-400">距離 {r.distance} 公里</p></div><button onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)} className="bg-blue-600 text-white p-2 rounded-lg"><Navigation size={18} /></button></div>
+             <div className="bg-gray-50 p-4 rounded-xl flex items-center gap-3"><MapPin className="text-gray-400" size={20} /><div className="flex-1"><p className="text-sm text-gray-800">{r.address}</p><p className="text-xs text-gray-400">距離 {r.distance} 公里</p></div></div>
           </div>
         </div>
         <div className="p-4 border-t border-gray-100 flex gap-3 pb-8 bg-white">
@@ -742,7 +825,12 @@ export default function App() {
            {room ? (
              <button onClick={() => shareRestaurantToRoom(r)} className="flex-[3] bg-teal-500 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-200"><Send size={18} /> 分享到聊天室</button>
            ) : (
-             <button className="flex-[3] bg-gray-900 text-white py-3 rounded-xl font-bold">立即訂位</button>
+             <button 
+                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.name)}&destination_place_id=${r.id}`)} 
+                className="flex-[3] bg-gray-900 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+             >
+                <Navigation size={18}/> Google Maps 導航
+             </button>
            )}
         </div>
       </div>
@@ -841,7 +929,7 @@ export default function App() {
         <div className="flex flex-col items-center justify-center h-64 space-y-4"><div className="animate-spin text-4xl">🍙</div><p className="text-gray-400 font-bold animate-pulse">正在幫你找好吃的...</p></div>
       ) : (
         <div className="space-y-3">
-          {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"><AlertCircle size={18} /> <span className="whitespace-pre-line text-left">{errorMsg}</span></div>}
+          {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2"><AlertCircle size={18} /> {errorMsg}</div>}
           {restaurants.map(r => (
             <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] transition-transform flex gap-3">
               <div className="w-20 h-20 bg-gray-100 rounded-xl flex-shrink-0 flex items-center justify-center text-2xl font-bold text-gray-300 overflow-hidden relative">
