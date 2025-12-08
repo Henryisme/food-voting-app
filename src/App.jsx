@@ -4,22 +4,21 @@ import {
   Copy, Crown, Share2, Sparkles, X, Home, Settings, List, ChevronLeft, 
   Locate, Map, Send, AlertCircle, Clock, Filter, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
-  Bike, Car, Footprints, Vote, Smile
+  Bike, Car, Footprints, Vote, Smile, Edit2, CheckCircle, Circle, Trash2, Plus
 } from 'lucide-react';
 
 // --- Firebase Imports ---
 import { initializeApp } from "firebase/app";
 import { 
   getFirestore, collection, addDoc, doc, getDoc, onSnapshot, 
-  updateDoc, arrayUnion, query, where, getDocs, setDoc, orderBy 
+  updateDoc, arrayUnion, query, where, getDocs, setDoc, orderBy, deleteDoc, serverTimestamp
 } from "firebase/firestore";
 
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 若在 Vercel 請使用 import.meta.env.VITE_GOOGLE_MAPS_API_KEY
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";       
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -106,6 +105,43 @@ const StarRating = ({ rating }) => (
     <span>{rating || "N/A"}</span>
   </div>
 );
+
+// 新增：互動式評分星星 (支援半顆星)
+const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
+  const [hoverValue, setHoverValue] = useState(null);
+
+  const handleMouseMove = (e, index) => {
+    if (readOnly) return;
+    const { left, width } = e.currentTarget.getBoundingClientRect();
+    const percent = (e.clientX - left) / width;
+    setHoverValue(index + (percent > 0.5 ? 1 : 0.5));
+  };
+
+  const displayValue = hoverValue !== null ? hoverValue : value;
+
+  return (
+    <div className="flex" onMouseLeave={() => setHoverValue(null)}>
+      {[0, 1, 2, 3, 4].map((index) => {
+        const fill = Math.max(0, Math.min(1, displayValue - index)); 
+        return (
+          <div
+            key={index}
+            className={`relative w-5 h-5 ${readOnly ? '' : 'cursor-pointer'}`}
+            onMouseMove={(e) => handleMouseMove(e, index)}
+            onClick={() => !readOnly && onChange(hoverValue)}
+          >
+            {/* 底色灰星 */}
+            <Star size={18} className="text-gray-300 absolute top-0 left-0" />
+            {/* 填色黃星 (使用 clip-path 遮罩) */}
+            <div className="absolute top-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+               <Star size={18} className="text-yellow-400 fill-yellow-400" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 const calculateTravelTime = (meters) => {
   const walk = Math.ceil(meters / 83);
@@ -299,19 +335,11 @@ export default function App() {
     setTravelTimes(calculateTravelTime(distFilter));
   }, [distFilter]);
 
-  useEffect(() => {
-    if (!db || !room?.id) return;
-    const q = query(collection(db, "rooms", room.id, "messages"), orderBy("createdAt", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMessages(newMessages);
-    });
-    return () => unsubscribe();
-  }, [room]);
+  // 修改：將 Room 相關邏輯移到 SocialScreen 內部管理，這裡只處理 Global 的狀態
+  // (原先的 useEffect 監聽 messages 移動到了 SocialScreen 內部，避免全域重繪)
 
   const getAvatarUrl = () => {
     if (userProfile.customAvatar) return userProfile.customAvatar;
-    // 依據性別給予不同的預設頭像種子
     const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; 
     return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
   };
@@ -324,161 +352,32 @@ export default function App() {
     }
   };
 
-  const createRoom = async () => {
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    const roomName = `${userProfile.name} 的美食團`;
-
-    if (db) {
-      try {
-        const roomRef = await addDoc(collection(db, "rooms"), {
-          code: code,
-          name: roomName,
-          createdAt: new Date(),
-          members: [userProfile.name]
-        });
-        await addDoc(collection(db, "rooms", roomRef.id, "messages"), {
-          sender: 'System',
-          text: `歡迎來到「${roomName}」！代碼：${code}`,
-          type: 'system',
-          createdAt: new Date()
-        });
-        setRoom({ id: roomRef.id, code, name: roomName });
-      } catch (e) {
-        console.error("建立房間失敗", e);
-        if (e.code === 'permission-denied') {
-            alert(`建立房間失敗：權限不足。\n請到 Firebase Console -> Firestore -> Rules 將規則改為 "allow read, write: if true;"`);
-        } else {
-            alert(`建立房間失敗：${e.message}\n請確認 Firebase 已啟用計費功能。`);
-        }
-      }
-    } else {
-      const newRoom = { id: Date.now().toString(), code, name: roomName };
-      setRoom(newRoom);
-      setMessages([{ id: 1, sender: 'System', text: `(單機模式) 歡迎！代碼：${code}`, type: 'system' }]);
-    }
-  };
-
-  const joinRoom = async () => {
-    if (joinCodeInput.length !== 4) return alert("請輸入 4 位數代碼");
-    if (db) {
-      try {
-        const q = query(collection(db, "rooms"), where("code", "==", joinCodeInput));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const docData = querySnapshot.docs[0];
-          setRoom({ id: docData.id, ...docData.data() });
-          await addDoc(collection(db, "rooms", docData.id, "messages"), {
-            sender: 'System',
-            text: `${userProfile.name} 加入了房間！`,
-            type: 'system',
-            createdAt: new Date()
-          });
-        } else {
-          alert("找不到此房間代碼！");
-        }
-      } catch (e) {
-        console.error(e);
-        if (e.code === 'permission-denied') {
-            alert(`加入失敗：權限不足。\n請檢查 Firebase Rules 設定。`);
-        } else {
-            alert(`加入失敗：${e.message}`);
-        }
-      }
-    } else {
-      const joinedRoom = { id: Date.now().toString(), code: joinCodeInput, name: `美食團 ${joinCodeInput}` };
-      setRoom(joinedRoom);
-      setMessages([{ id: 1, sender: 'System', text: `(單機) 加入成功！`, type: 'system' }]);
-    }
-  };
-
-  const copyInviteLink = () => {
-    if (!room) return;
-    const url = `${window.location.origin}${window.location.pathname}?room=${room.code}`;
-    if (navigator.share) {
-      navigator.share({ title: '一起來投票！', text: `加入我的美食團：${room.code}`, url }).catch(console.error);
-    } else {
-      navigator.clipboard.writeText(url);
-      alert("連結已複製！傳給朋友即可加入");
-    }
-  };
-
-  const sendMessage = async (text) => {
-    if (!text.trim()) return;
-    const msgData = {
-      sender: userProfile.name,
-      avatar: getAvatarUrl(),
-      text: text,
-      type: 'text',
-      createdAt: new Date()
-    };
-    if (db && room) {
-      await addDoc(collection(db, "rooms", room.id, "messages"), msgData);
-    } else {
-      setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
-    }
-  };
-
-  const shareRestaurantToRoom = async (restaurant) => {
+  // --- 共同清單邏輯 (在父層定義以便 DetailModal 使用) ---
+  const addToSharedList = async (restaurant) => {
     if (!room) {
-      alert("請先建立或加入一個房間喔！");
+      alert("請先加入房間才能使用共同清單功能喔！");
       setActiveTab('social');
       return;
     }
-    const msgData = {
-      sender: userProfile.name,
-      avatar: getAvatarUrl(),
-      text: `我想吃這家！`,
-      type: 'share',
-      restaurant: restaurant,
-      votingEnabled: false, 
-      votes: 0,
-      voters: [],
-      createdAt: new Date()
-    };
+    
     if (db) {
-      await addDoc(collection(db, "rooms", room.id, "messages"), msgData);
+      try {
+        await addDoc(collection(db, "rooms", room.id, "shared_restaurants"), {
+          name: restaurant.name,
+          address: restaurant.address || "",
+          addedBy: userProfile.name,
+          type: restaurant.type || "美食",
+          ratings: {}, // { userId: score }
+          eatenStatus: {}, // { userId: boolean }
+          createdAt: serverTimestamp()
+        });
+        alert(`已將「${restaurant.name}」加入共同清單！`);
+      } catch (e) {
+        console.error("加入清單失敗", e);
+        alert("加入失敗，請稍後再試。");
+      }
     } else {
-      setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
-    }
-    setActiveTab('social');
-    setShowDetail(null);
-  };
-
-  const enableVoting = async (msgId) => {
-    if (db && room) {
-      const msgRef = doc(db, "rooms", room.id, "messages", msgId);
-      await updateDoc(msgRef, {
-        votingEnabled: true
-      });
-    } else {
-      setMessages(prev => prev.map(msg => {
-        if (msg.id === msgId) {
-          return { ...msg, votingEnabled: true };
-        }
-        return msg;
-      }));
-    }
-  };
-
-  const voteForMessage = async (msgId, currentVoters, currentVotes) => {
-    if (currentVoters && currentVoters.includes(userProfile.name)) return;
-    if (db && room) {
-      const msgRef = doc(db, "rooms", room.id, "messages", msgId);
-      await updateDoc(msgRef, {
-        votes: (currentVotes || 0) + 1,
-        voters: arrayUnion(userProfile.name)
-      });
-    } else {
-      setMessages(prev => prev.map(msg => {
-        if (msg.id === msgId) {
-          return {
-            ...msg,
-            votes: (msg.votes || 0) + 1,
-            voters: [...(msg.voters || []), userProfile.name]
-          };
-        }
-        return msg;
-      }));
+      alert("單機模式暫不支援共同清單功能 (需要 Firestore)");
     }
   };
 
@@ -537,10 +436,10 @@ export default function App() {
 
                 let pLevel = 2;
                 if (typeof place.priceLevel === 'string') {
-                     if (place.priceLevel.includes('INEXPENSIVE')) pLevel = 1;
-                     else if (place.priceLevel.includes('MODERATE')) pLevel = 2;
-                     else if (place.priceLevel.includes('EXPENSIVE')) pLevel = 3;
-                     else if (place.priceLevel.includes('VERY_EXPENSIVE')) pLevel = 4;
+                      if (place.priceLevel.includes('INEXPENSIVE')) pLevel = 1;
+                      else if (place.priceLevel.includes('MODERATE')) pLevel = 2;
+                      else if (place.priceLevel.includes('EXPENSIVE')) pLevel = 3;
+                      else if (place.priceLevel.includes('VERY_EXPENSIVE')) pLevel = 4;
                 } else if (typeof place.priceLevel === 'number') {
                     pLevel = place.priceLevel;
                 }
@@ -550,7 +449,6 @@ export default function App() {
                 
                 let openingText = "營業時間未知";
                 if (place.regularOpeningHours && place.regularOpeningHours.weekdayDescriptions) {
-                    const todayIndex = new Date().getDay();
                     openingText = place.regularOpeningHours.weekdayDescriptions;
                 }
 
@@ -576,6 +474,7 @@ export default function App() {
 
             let filtered = formatted;
             
+            // 寬鬆過濾距離，因為圓形半徑 vs 實際路徑
             filtered = filtered.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
 
             if (ratingFilter !== 'all') {
@@ -598,11 +497,11 @@ export default function App() {
         const errorMsg = err.message || JSON.stringify(err);
         
         if (errorMsg.includes("Places API (New)") || errorMsg.includes("PERMISSION_DENIED")) {
-             setErrorMsg("【權限錯誤】Google Places API (New) 未啟用。\n\n請前往 Google Cloud Console 啟用 \"Places API (New)\"。\n(注意：不是舊版 Places API)。啟用後需等待幾分鐘才會生效。");
+              setErrorMsg("【權限錯誤】Google Places API (New) 未啟用。\n\n請前往 Google Cloud Console 啟用 \"Places API (New)\"。\n(注意：不是舊版 Places API)。啟用後需等待幾分鐘才會生效。");
         } else if (errorMsg.includes("IsNotAllowedError")) {
-             setErrorMsg("搜尋失敗：API Key 權限不足或未啟用 Places API (New)。");
+              setErrorMsg("搜尋失敗：API Key 權限不足或未啟用 Places API (New)。");
         } else {
-             setErrorMsg("搜尋發生錯誤：" + errorMsg);
+              setErrorMsg("搜尋發生錯誤：" + errorMsg);
         }
     } finally {
         setLoading(false);
@@ -636,7 +535,7 @@ export default function App() {
 
   const ProfileModal = () => {
     const [localName, setLocalName] = useState(userProfile.name);
-    // 預設頭像列表 (不分性別，自由選擇)
+    // 預設頭像列表
     const avatarSeeds = ["Felix", "Maria", "Jack", "Aneka", "Jocelyn", "Granny", "Bear", "Leo", "Zoe", "Max", "Luna", "Tiger"];
 
     return (
@@ -645,7 +544,6 @@ export default function App() {
           <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20}/></button>
           <h2 className="text-xl font-black text-gray-800 mb-6 text-center">設定個人檔案</h2>
           
-          {/* 預覽 & 上傳 */}
           <div className="flex flex-col items-center gap-4 mb-6">
             <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-rose-200 relative group shadow-lg ring-4 ring-rose-50">
                <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Avatar" className="w-full h-full object-cover" />
@@ -664,7 +562,6 @@ export default function App() {
             />
           </div>
   
-          {/* 性別選擇 (已加回) */}
           <div className="space-y-3 mb-6">
              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">形象風格</label>
              <div className="flex gap-3 bg-gray-100 p-1 rounded-2xl">
@@ -683,7 +580,6 @@ export default function App() {
              </div>
           </div>
 
-          {/* 頭像選擇 */}
           <div className="space-y-3">
              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">快速選擇頭像</label>
              <div className="grid grid-cols-4 gap-3">
@@ -715,12 +611,172 @@ export default function App() {
 
   const SocialScreen = () => {
     const [msgInput, setMsgInput] = useState("");
+    const [subTab, setSubTab] = useState("chat"); // "chat" | "list"
     const messagesEndRef = useRef(null);
-    useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+    const [sharedRestaurants, setSharedRestaurants] = useState([]);
+    const [isAddingRest, setIsAddingRest] = useState(false); // 手動新增餐廳 Modal
+    const [newRestName, setNewRestName] = useState("");
+
+    useEffect(() => { 
+        if(subTab === 'chat') {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); 
+        }
+    }, [messages, subTab]);
+
+    // 監聽聊天訊息
+    useEffect(() => {
+        if (!db || !room?.id) return;
+        const q = query(collection(db, "rooms", room.id, "messages"), orderBy("createdAt", "asc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setMessages(newMessages);
+        });
+        return () => unsubscribe();
+    }, [room]);
+
+    // 監聽共同清單
+    useEffect(() => {
+        if (!db || !room?.id) return;
+        const q = query(collection(db, "rooms", room.id, "shared_restaurants"), orderBy("createdAt", "desc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setSharedRestaurants(list);
+        });
+        return () => unsubscribe();
+    }, [room]);
+
+    const handleRenameRoom = async () => {
+        const newName = prompt("請輸入新的房間名稱：", room.name);
+        if (newName && newName.trim() && db) {
+            try {
+                await updateDoc(doc(db, "rooms", room.id), { name: newName.trim() });
+                setRoom(prev => ({ ...prev, name: newName.trim() }));
+            } catch (e) {
+                console.error("改名失敗", e);
+                alert("改名失敗，可能是權限問題。");
+            }
+        }
+    };
+
+    const handleManualAddRestaurant = async () => {
+        if(!newRestName.trim()) return;
+        await addToSharedList({ name: newRestName, address: "手動新增", type: "自選" });
+        setIsAddingRest(false);
+        setNewRestName("");
+    };
+
+    const updateSharedItemStatus = async (itemId, type, value) => {
+        if (!db) return;
+        const ref = doc(db, "rooms", room.id, "shared_restaurants", itemId);
+        try {
+            if (type === 'rating') {
+                await updateDoc(ref, { [`ratings.${userProfile.name}`]: value });
+            } else if (type === 'eaten') {
+                await updateDoc(ref, { [`eatenStatus.${userProfile.name}`]: value });
+            }
+        } catch (e) {
+            console.error("更新失敗", e);
+        }
+    };
+
+    const createRoom = async () => {
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
+      const roomName = `${userProfile.name} 的美食團`;
+  
+      if (db) {
+        try {
+          const roomRef = await addDoc(collection(db, "rooms"), {
+            code: code,
+            name: roomName,
+            createdAt: new Date(),
+            members: [userProfile.name]
+          });
+          await addDoc(collection(db, "rooms", roomRef.id, "messages"), {
+            sender: 'System',
+            text: `歡迎來到「${roomName}」！代碼：${code}`,
+            type: 'system',
+            createdAt: new Date()
+          });
+          setRoom({ id: roomRef.id, code, name: roomName });
+        } catch (e) {
+          console.error("建立房間失敗", e);
+          alert(`建立房間失敗：${e.message}`);
+        }
+      } else {
+        // 單機模擬
+        const newRoom = { id: Date.now().toString(), code, name: roomName };
+        setRoom(newRoom);
+        setMessages([{ id: 1, sender: 'System', text: `(單機模式) 歡迎！代碼：${code}`, type: 'system' }]);
+      }
+    };
+  
+    const joinRoom = async () => {
+      if (joinCodeInput.length !== 4) return alert("請輸入 4 位數代碼");
+      if (db) {
+        try {
+          const q = query(collection(db, "rooms"), where("code", "==", joinCodeInput));
+          const querySnapshot = await getDocs(q);
+          if (!querySnapshot.empty) {
+            const docData = querySnapshot.docs[0];
+            setRoom({ id: docData.id, ...docData.data() });
+            await addDoc(collection(db, "rooms", docData.id, "messages"), {
+              sender: 'System',
+              text: `${userProfile.name} 加入了房間！`,
+              type: 'system',
+              createdAt: new Date()
+            });
+          } else {
+            alert("找不到此房間代碼！");
+          }
+        } catch (e) {
+          console.error(e);
+          alert(`加入失敗：${e.message}`);
+        }
+      } else {
+        const joinedRoom = { id: Date.now().toString(), code: joinCodeInput, name: `美食團 ${joinCodeInput}` };
+        setRoom(joinedRoom);
+        setMessages([{ id: 1, sender: 'System', text: `(單機) 加入成功！`, type: 'system' }]);
+      }
+    };
+
+    const sendMessage = async (text) => {
+        if (!text.trim()) return;
+        const msgData = {
+          sender: userProfile.name,
+          avatar: getAvatarUrl(),
+          text: text,
+          type: 'text',
+          createdAt: new Date()
+        };
+        if (db && room) {
+          await addDoc(collection(db, "rooms", room.id, "messages"), msgData);
+        } else {
+          setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
+        }
+    };
+
+    const voteForMessage = async (msgId, currentVoters, currentVotes) => {
+        if (currentVoters && currentVoters.includes(userProfile.name)) return;
+        if (db && room) {
+          const msgRef = doc(db, "rooms", room.id, "messages", msgId);
+          await updateDoc(msgRef, {
+            votes: (currentVotes || 0) + 1,
+            voters: arrayUnion(userProfile.name)
+          });
+        }
+    };
+
+    const enableVoting = async (msgId) => {
+        if (db && room) {
+          const msgRef = doc(db, "rooms", room.id, "messages", msgId);
+          await updateDoc(msgRef, { votingEnabled: true });
+        }
+    };
 
     if (!room) {
       return (
         <div className="p-6 h-full flex flex-col justify-center items-center text-center space-y-8 font-rounded bg-gradient-to-b from-orange-50/50 to-white">
+           {/* 未加入房間的 UI 保持不變 */}
            <div className="animate-in fade-in zoom-in duration-500">
              <div className="w-24 h-24 bg-gradient-to-br from-rose-100 to-orange-100 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shadow-inner ring-8 ring-white">
                <Users size={48} />
@@ -732,10 +788,7 @@ export default function App() {
            </div>
 
            <div className="w-full space-y-4 max-w-xs">
-              <button 
-                onClick={createRoom}
-                className="w-full py-4 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-2xl font-bold shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
+              <button onClick={createRoom} className="w-full py-4 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-2xl font-bold shadow-lg shadow-rose-200 hover:shadow-rose-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2">
                 <PlusCircle size={20} /> 建立新房間
               </button>
               
@@ -745,113 +798,183 @@ export default function App() {
               </div>
 
               <div className="flex gap-2">
-                 <input 
-                   type="text" 
-                   value={joinCodeInput}
-                   onChange={(e) => setJoinCodeInput(e.target.value)}
-                   placeholder="輸入房間代碼"
-                   className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 font-bold outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent text-center shadow-sm"
-                   maxLength={4}
-                 />
+                 <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} placeholder="輸入房間代碼" className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 font-bold outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent text-center shadow-sm" maxLength={4} />
                  <button onClick={joinRoom} className="px-6 bg-gray-800 text-white rounded-2xl font-bold shadow-md hover:bg-gray-700 transition-colors">加入</button>
               </div>
            </div>
         </div>
       );
     }
+
+    // 已加入房間：全螢幕 Overlay (修正手機版輸入框問題)
     return (
-      <div className="flex flex-col h-full bg-gray-50 font-rounded">
-         <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-gray-100">
-            <div>
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+      <div className="fixed inset-0 z-50 bg-gray-50 font-rounded flex flex-col h-[100dvh]">
+         {/* Header */}
+         <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
                 {room.name}
-                <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-extrabold">#{room.code}</span>
+                <button onClick={handleRenameRoom} className="p-1 text-gray-400 hover:text-gray-600 rounded-full"><Edit2 size={14}/></button>
               </h3>
+              <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-extrabold">#{room.code}</span>
             </div>
             <div className="flex gap-2">
                <button onClick={copyInviteLink} className="p-2 text-teal-600 bg-teal-50 rounded-full hover:bg-teal-100 transition-colors"><LinkIcon size={20} /></button>
                <button onClick={() => setRoom(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><LogOut size={20} /></button>
             </div>
          </div>
-         
-         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            {messages.map((msg) => {
-              if (msg.type === 'system') return <div key={msg.id} className="text-center text-xs text-gray-400 my-4"><span className="bg-gray-200/50 px-3 py-1 rounded-full">{msg.text}</span></div>
-              const isMe = msg.sender === userProfile.name;
-              
-              return (
-                 <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group`}>
-                    {!isMe && (
-                       <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm mt-1">
-                          <img src={msg.avatar} className="w-full h-full object-cover" />
-                       </div>
-                    )}
-                    <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                       <span className="text-[10px] text-gray-400 mb-1 px-1">{msg.sender}</span>
-                       
-                       {msg.type === 'text' ? (
-                          <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-gradient-to-br from-rose-500 to-orange-500 text-white rounded-tr-sm' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-sm'}`}>
-                             {msg.text}
-                          </div>
-                       ) : (
-                          // 餐廳分享卡片
-                          <div className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-rose-100' : 'border-gray-100'} shadow-sm w-60 overflow-hidden`}>
-                             <div className="w-full h-32 bg-gray-100 rounded-xl mb-3 overflow-hidden relative">
-                                {msg.restaurant.photoUrl ? (
-                                   <img src={msg.restaurant.photoUrl} className="w-full h-full object-cover hover:scale-110 transition-transform duration-500" />
-                                ) : (
-                                   <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300 font-bold bg-gray-50">{msg.restaurant.name.charAt(0)}</div>
-                                )}
-                                <div className="absolute top-2 right-2 bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-xs font-bold text-orange-500 flex items-center gap-1 shadow-sm">
-                                   <Star size={10} fill="currentColor"/> {msg.restaurant.rating}
-                                </div>
-                             </div>
-                             <h4 className="font-bold text-gray-800 truncate text-lg mb-0.5">{msg.restaurant.name}</h4>
-                             <p className="text-xs text-gray-400 truncate mb-3 flex items-center gap-1"><MapPin size={10}/> {msg.restaurant.address}</p>
-                             
-                             {/* 投票按鈕區 */}
-                             {msg.votingEnabled ? (
-                                <button 
-                                  onClick={() => voteForMessage(msg.id, msg.voters, msg.votes)}
-                                  className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white shadow-md shadow-teal-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                                >
-                                   <ThumbsUp size={14} className={msg.voters?.includes(userProfile.name) ? "animate-bounce" : ""} /> 
-                                   {msg.votes > 0 ? `${msg.votes} 人想吃` : '投一票'}
-                                </button>
-                             ) : (
-                                <button 
-                                  onClick={() => enableVoting(msg.id)} 
-                                  className="w-full py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-rose-100 border border-rose-100 transition-colors"
-                                >
-                                   <Vote size={14} /> 發起投票
-                                </button>
-                             )}
-                          </div>
-                       )}
-                    </div>
-                 </div>
-              )
-            })}
-            <div ref={messagesEndRef} />
-         </div>
 
-         {/* Input Area */}
-         <div className="p-3 bg-white border-t border-gray-100 flex gap-2 items-center pb-safe">
-            <input 
-              value={msgInput}
-              onChange={(e) => setMsgInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (sendMessage(msgInput), setMsgInput(""))}
-              className="flex-1 bg-gray-100 rounded-full px-5 py-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 transition-shadow"
-              placeholder="輸入訊息..."
-            />
-            <button 
-               onClick={() => { sendMessage(msgInput); setMsgInput(""); }}
-               className={`p-3 rounded-full transition-all shadow-md ${msgInput.trim() ? 'bg-rose-500 text-white hover:bg-rose-600 hover:scale-105' : 'bg-gray-200 text-gray-400'}`}
-               disabled={!msgInput.trim()}
-            >
-               <Send size={20} />
+         {/* Sub Tabs */}
+         <div className="flex bg-white border-b border-gray-100 flex-shrink-0">
+            <button onClick={() => setSubTab('chat')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'chat' ? 'text-rose-500 border-b-2 border-rose-500' : 'text-gray-400'}`}>
+                <MessageCircle size={16}/> 聊天室
+            </button>
+            <button onClick={() => setSubTab('list')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'list' ? 'text-rose-500 border-b-2 border-rose-500' : 'text-gray-400'}`}>
+                <List size={16}/> 共同清單
             </button>
          </div>
+         
+         {/* Content Area */}
+         <div className="flex-1 overflow-y-auto relative">
+            {subTab === 'chat' ? (
+                <div className="p-4 space-y-6 pb-20">
+                    {messages.map((msg) => {
+                        if (msg.type === 'system') return <div key={msg.id} className="text-center text-xs text-gray-400 my-4"><span className="bg-gray-200/50 px-3 py-1 rounded-full">{msg.text}</span></div>
+                        const isMe = msg.sender === userProfile.name;
+                        
+                        return (
+                            <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group`}>
+                                {!isMe && (
+                                    <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm mt-1">
+                                        <img src={msg.avatar} className="w-full h-full object-cover" />
+                                    </div>
+                                )}
+                                <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                    <span className="text-[10px] text-gray-400 mb-1 px-1">{msg.sender}</span>
+                                    {msg.type === 'text' ? (
+                                        <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-gradient-to-br from-rose-500 to-orange-500 text-white rounded-tr-sm' : 'bg-white text-gray-800 border border-gray-100 rounded-tl-sm'}`}>
+                                            {msg.text}
+                                        </div>
+                                    ) : (
+                                        <div className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-rose-100' : 'border-gray-100'} shadow-sm w-60 overflow-hidden`}>
+                                            {/* Share Card Content */}
+                                            <div className="w-full h-32 bg-gray-100 rounded-xl mb-3 overflow-hidden relative">
+                                                {msg.restaurant.photoUrl ? <img src={msg.restaurant.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300 font-bold bg-gray-50">{msg.restaurant.name.charAt(0)}</div>}
+                                            </div>
+                                            <h4 className="font-bold text-gray-800 truncate text-lg mb-0.5">{msg.restaurant.name}</h4>
+                                            
+                                            {msg.votingEnabled ? (
+                                                <button onClick={() => voteForMessage(msg.id, msg.voters, msg.votes)} className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all mt-2 ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white' : 'bg-gray-50 text-gray-600'}`}>
+                                                    <ThumbsUp size={14}/> {msg.votes > 0 ? `${msg.votes} 人想吃` : '投一票'}
+                                                </button>
+                                            ) : (
+                                                <button onClick={() => enableVoting(msg.id)} className="w-full py-2.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-rose-100 mt-2">
+                                                    <Vote size={14} /> 發起投票
+                                                </button>
+                                            )}
+                                            
+                                            {/* 加入清單按鈕 */}
+                                            <button onClick={() => addToSharedList(msg.restaurant)} className="w-full mt-2 py-2 text-xs text-gray-400 hover:text-gray-600 border-t border-gray-100 flex items-center justify-center gap-1">
+                                                <List size={12}/> 加入共同清單
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })}
+                    <div ref={messagesEndRef} />
+                </div>
+            ) : (
+                // 共同清單視圖
+                <div className="p-4 space-y-4 pb-24">
+                    <button onClick={() => setIsAddingRest(true)} className="w-full py-3 bg-white border-2 border-dashed border-gray-300 rounded-2xl text-gray-400 font-bold flex items-center justify-center gap-2 hover:border-rose-300 hover:text-rose-500 transition-colors">
+                        <Plus size={20}/> 新增餐廳到清單
+                    </button>
+
+                    {sharedRestaurants.map(item => (
+                        <div key={item.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h4 className="font-bold text-gray-800 text-lg">{item.name}</h4>
+                                    <p className="text-xs text-gray-400 flex items-center gap-1">由 {item.addedBy} 新增 • {item.type}</p>
+                                </div>
+                                <button onClick={async () => { if(confirm("確定移除？")) await deleteDoc(doc(db, "rooms", room.id, "shared_restaurants", item.id)); }} className="text-gray-300 hover:text-red-400"><Trash2 size={16}/></button>
+                            </div>
+
+                            <div className="bg-gray-50 p-3 rounded-xl flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-500">我的狀態</span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => updateSharedItemStatus(item.id, 'eaten', true)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white text-gray-400 border border-gray-200'}`}
+                                    >
+                                        <CheckCircle size={12}/> 吃過
+                                    </button>
+                                    <button 
+                                        onClick={() => updateSharedItemStatus(item.id, 'eaten', false)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white text-gray-400 border border-gray-200'}`}
+                                    >
+                                        <Circle size={12}/> 沒吃過
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-50 p-3 rounded-xl flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-500">我的評分</span>
+                                <InteractiveStarRating 
+                                    value={item.ratings?.[userProfile.name] || 0} 
+                                    onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} 
+                                />
+                            </div>
+                            
+                            {/* 顯示平均分 (選用) */}
+                            {item.ratings && Object.keys(item.ratings).length > 0 && (
+                                <div className="text-xs text-right text-gray-400 mt-1">
+                                    平均: {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)} 星
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+         </div>
+
+         {/* Chat Input Area (Fixed at bottom) */}
+         {subTab === 'chat' && (
+             <div className="p-3 bg-white border-t border-gray-100 flex gap-2 items-center flex-shrink-0 pb-safe safe-area-bottom">
+                <input 
+                  value={msgInput}
+                  onChange={(e) => setMsgInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (sendMessage(msgInput), setMsgInput(""))}
+                  className="flex-1 bg-gray-100 rounded-full px-5 py-3 text-sm outline-none focus:ring-2 focus:ring-rose-500 transition-shadow"
+                  placeholder="輸入訊息..."
+                />
+                <button onClick={() => { sendMessage(msgInput); setMsgInput(""); }} className={`p-3 rounded-full transition-all shadow-md ${msgInput.trim() ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-gray-200 text-gray-400'}`} disabled={!msgInput.trim()}>
+                   <Send size={20} />
+                </button>
+             </div>
+         )}
+
+         {/* Manual Add Restaurant Modal */}
+         {isAddingRest && (
+             <div className="absolute inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                 <div className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl animate-in zoom-in">
+                     <h3 className="font-bold text-lg mb-4">新增餐廳到共同清單</h3>
+                     <input 
+                        value={newRestName} 
+                        onChange={e => setNewRestName(e.target.value)}
+                        placeholder="輸入餐廳名稱"
+                        className="w-full border border-gray-200 rounded-xl p-3 mb-4 outline-none focus:border-rose-500"
+                        autoFocus
+                     />
+                     <div className="flex gap-2">
+                         <button onClick={() => setIsAddingRest(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-500">取消</button>
+                         <button onClick={handleManualAddRestaurant} className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold">新增</button>
+                     </div>
+                 </div>
+             </div>
+         )}
       </div>
     );
   };
@@ -864,10 +987,9 @@ export default function App() {
     // 當日營業時間處理
     let todayHours = "暫無資料";
     if (Array.isArray(r.openingHours)) {
-       const day = new Date().getDay(); // 0 is Sunday
+       const day = new Date().getDay(); 
        const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
        const todayStr = daysMap[day];
-       // 嘗試模糊比對
        const todayInfo = r.openingHours.find(h => h.includes(todayStr) || h.includes(todayStr.substring(0, 3))); 
        if (todayInfo) todayHours = todayInfo;
        else if(r.openingHours.length > 0) todayHours = r.openingHours[(day + 6) % 7]; 
@@ -878,11 +1000,9 @@ export default function App() {
         <div className="h-72 bg-gray-200 relative group">
            <button onClick={() => setShowDetail(null)} className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-gray-800 shadow-sm z-10 hover:bg-white transition-colors"><ChevronLeft size={24} /></button>
            <button onClick={() => handleSystemShare(r)} className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-teal-600 shadow-sm z-10 hover:bg-white transition-colors"><Share2 size={20} /></button>
-           
            <div className="w-full h-full flex items-center justify-center text-6xl text-gray-400 font-bold bg-gradient-to-b from-gray-100 to-gray-300 overflow-hidden">
              {r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover" /> : r.name.charAt(0)}
            </div>
-           
            <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/60 to-transparent"></div>
            <div className="absolute bottom-4 left-4 text-white">
              <span className="bg-white/20 px-3 py-1 rounded-full text-xs backdrop-blur-md border border-white/30 font-bold tracking-wide">{r.type}</span>
@@ -890,33 +1010,24 @@ export default function App() {
         </div>
 
         <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)] relative">
-          {/* Header Info */}
           <div className="flex justify-between items-start mb-2">
             <h2 className="text-2xl font-black text-gray-800 leading-tight flex-1 mr-2">{r.name}</h2>
             <div className="flex flex-col items-end">
                <PriceDisplay level={r.priceLevel} />
-               <span className={`text-[10px] mt-1 px-2 py-0.5 rounded-full font-bold ${r.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                 {r.isOpen ? '營業中' : '休息中'}
-               </span>
+               <span className={`text-[10px] mt-1 px-2 py-0.5 rounded-full font-bold ${r.isOpen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{r.isOpen ? '營業中' : '休息中'}</span>
             </div>
           </div>
-
           <div className="flex items-center gap-2 mb-6 text-sm">
              <StarRating rating={r.rating} /> 
              <span className="text-gray-400 font-medium">({r.userRatingsTotal} 則評論)</span>
           </div>
-          
-          {/* 營業時間顯示區 (New) */}
           <div className="bg-blue-50/80 p-4 rounded-2xl mb-6 text-xs text-blue-900 flex flex-col gap-2 border border-blue-100">
              <span className="font-bold flex items-center gap-2 text-blue-700 uppercase tracking-wider"><Clock size={14}/> 今日營業時間</span>
              <span className="pl-6 text-sm font-medium">{todayHours.replace(/"/g, '')}</span>
           </div>
-
           <div className="space-y-4">
              <div className="bg-gray-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-gray-100 transition-colors cursor-pointer group" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)}>
-               <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-400 shadow-sm group-hover:text-rose-500 transition-colors">
-                  <MapPin size={20} />
-               </div>
+               <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-400 shadow-sm group-hover:text-rose-500 transition-colors"><MapPin size={20} /></div>
                <div className="flex-1">
                  <p className="text-sm font-bold text-gray-800">{r.address}</p>
                  <p className="text-xs text-gray-500 mt-0.5">距離 {r.distance} 公里</p>
@@ -926,27 +1037,23 @@ export default function App() {
           </div>
         </div>
 
-        {/* 底部按鈕區 */}
         <div className="p-4 border-t border-gray-100 flex gap-3 pb-8 bg-white safe-area-bottom">
-           <button 
-             onClick={(e) => toggleShortlist(e, r)}
-             className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-           >
+           <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
              <Heart size={20} fill={isShortlisted ? "currentColor" : "none"} />
            </button>
            
+           {/* 新增：分享按鈕 (聊天室 / 共同清單) */}
            {room ? (
-             <button 
-               onClick={() => shareRestaurantToRoom(r)}
-               className="flex-[3] bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-200 hover:shadow-teal-300 transition-all active:scale-95"
-             >
-               <Send size={18} /> 分享到聊天室
-             </button>
+             <div className="flex-[3] flex gap-2">
+                 <button onClick={() => { setActiveTab('social'); addToSharedList(r); }} className="flex-1 bg-white border-2 border-teal-500 text-teal-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs">
+                   <List size={16} /> 加入清單
+                 </button>
+                 <button onClick={() => { setActiveTab('social'); /* share msg */ }} className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-lg shadow-teal-200 hover:shadow-teal-300 transition-all active:scale-95 text-xs">
+                   <Send size={16} /> 傳到聊天室
+                 </button>
+             </div>
            ) : (
-             <button 
-                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.name)}&destination_place_id=${r.id}`)} 
-                className="flex-[3] bg-gray-900 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-gray-800 transition-all active:scale-95"
-             >
+             <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.name)}&destination_place_id=${r.id}`)} className="flex-[3] bg-gray-900 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-gray-800 transition-all active:scale-95">
                 <Navigation size={18}/> Google Maps 導航
              </button>
            )}
@@ -957,73 +1064,56 @@ export default function App() {
 
   const SearchPanel = () => (
     <div className="p-6 space-y-8 font-rounded bg-gradient-to-b from-orange-50/30 to-white min-h-full">
-       {/* 內嵌字體樣式 */}
-       <style>{`
-         @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap');
-         .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }
-       `}</style>
+       <style>{`@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap'); .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }`}</style>
 
        <div className="text-center mt-6 flex flex-col items-center">
-          <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105">
+         <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105">
              <img src={getAvatarUrl()} alt="Profile" className="w-full h-full object-cover" />
              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={24}/></div>
-          </div>
-          <h1 className="text-3xl font-black text-gray-800 flex items-center justify-center gap-2 tracking-tight">
-            今天吃什麼 <Utensils className="text-rose-500 fill-rose-500" />
-          </h1>
-          <p className="text-gray-400 text-sm mt-1 font-medium">Hello, {userProfile.name}！想吃點什麼？</p>
+         </div>
+         <h1 className="text-3xl font-black text-gray-800 flex items-center justify-center gap-2 tracking-tight">
+           今天吃什麼 <Utensils className="text-rose-500 fill-rose-500" />
+         </h1>
+         <p className="text-gray-400 text-sm mt-1 font-medium">Hello, {userProfile.name}！想吃點什麼？</p>
        </div>
 
        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setIsMapMode(true)}>
-          <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-rose-400 to-orange-400"></div>
-          <div className="flex justify-between items-center mb-3">
+         <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-rose-400 to-orange-400"></div>
+         <div className="flex justify-between items-center mb-3">
              <label className="text-xs font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wider"><MapPin size={12}/> 目前搜尋位置</label>
              <span className="text-rose-500 text-xs font-bold bg-rose-50 px-2 py-0.5 rounded-full">點擊修改</span>
-          </div>
-          <div className="flex items-center gap-3">
+         </div>
+         <div className="flex items-center gap-3">
              <div className="flex-1">
                 <div className="text-lg font-bold text-gray-800 truncate tracking-tight">{virtualLocation === realLocation ? "📍 我的目前位置" : "🗺️ 自訂地圖位置"}</div>
                 <div className="text-xs text-gray-400 font-mono mt-1 opacity-60">{virtualLocation?.lat.toFixed(4)}, {virtualLocation?.lng.toFixed(4)}</div>
              </div>
-          </div>
+         </div>
        </div>
 
        <div className="space-y-5">
-          {/* 用餐時段 */}
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Clock size={18} className="text-teal-500"/> 用餐時段</label>
-            <div className="grid grid-cols-3 gap-3">
-                {[
-                  { id: 'breakfast', icon: '🥪', label: '早餐' },
-                  { id: 'lunch', icon: '🍱', label: '午餐' },
-                  { id: 'dinner', icon: '🍲', label: '晚餐' }
-                ].map(opt => (
-                   <button 
-                     key={opt.id}
-                     onClick={() => setTimeFilter(opt.id)}
-                     className={`py-3 rounded-2xl font-bold text-sm transition-all border-2 ${timeFilter === opt.id ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-transparent bg-white text-gray-400 hover:bg-gray-50'}`}
-                   >
-                      <span className="mr-1">{opt.icon}</span> {opt.label}
-                   </button>
-                ))}
-            </div>
-          </div>
-          
-          {/* 距離與評分 */}
-          <div className="grid grid-cols-2 gap-4">
+         <div className="space-y-2">
+           <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Clock size={18} className="text-teal-500"/> 用餐時段</label>
+           <div className="grid grid-cols-3 gap-3">
+               {[ { id: 'breakfast', icon: '🥪', label: '早餐' }, { id: 'lunch', icon: '🍱', label: '午餐' }, { id: 'dinner', icon: '🍲', label: '晚餐' } ].map(opt => (
+                  <button key={opt.id} onClick={() => setTimeFilter(opt.id)} className={`py-3 rounded-2xl font-bold text-sm transition-all border-2 ${timeFilter === opt.id ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-transparent bg-white text-gray-400 hover:bg-gray-50'}`}>
+                     <span className="mr-1">{opt.icon}</span> {opt.label}
+                  </button>
+               ))}
+           </div>
+         </div>
+         
+         <div className="grid grid-cols-2 gap-4">
              <div className="space-y-2">
                  <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Navigation size={18} className="text-blue-500"/> 距離</label>
                  <div className="relative">
-                   <select 
-                     value={distFilter} 
-                     onChange={(e) => setDistFilter(parseInt(e.target.value))}
-                     className="w-full appearance-none bg-white border-2 border-gray-100 text-gray-700 py-3.5 px-4 rounded-2xl font-bold outline-none focus:border-blue-500 transition-colors"
-                   >
+                   <select value={distFilter} onChange={(e) => setDistFilter(parseInt(e.target.value))} className="w-full appearance-none bg-white border-2 border-gray-100 text-gray-700 py-3.5 px-4 rounded-2xl font-bold outline-none focus:border-blue-500 transition-colors">
                      <option value={100}>100m</option>
                      <option value={300}>300m</option>
                      <option value={500}>500m</option>
                      <option value={1000}>1km</option>
                      <option value={2000}>2km</option>
+                     <option value={5000}>5km</option> {/* 新增 5km */}
                    </select>
                    <ChevronDown className="absolute right-4 top-4 text-gray-400 pointer-events-none" size={18} />
                  </div>
@@ -1032,11 +1122,7 @@ export default function App() {
              <div className="space-y-2">
                  <label className="text-sm font-bold text-gray-700 flex items-center gap-2"><Star size={18} className="text-yellow-500"/> 評分</label>
                  <div className="relative">
-                  <select 
-                    value={ratingFilter} 
-                    onChange={(e) => setRatingFilter(e.target.value)}
-                    className="w-full appearance-none bg-white border-2 border-gray-100 text-gray-700 py-3.5 px-4 rounded-2xl font-bold outline-none focus:border-yellow-500 transition-colors"
-                  >
+                  <select value={ratingFilter} onChange={(e) => setRatingFilter(e.target.value)} className="w-full appearance-none bg-white border-2 border-gray-100 text-gray-700 py-3.5 px-4 rounded-2xl font-bold outline-none focus:border-yellow-500 transition-colors">
                     <option value="all">不限</option>
                     <option value="3">3.0+</option>
                     <option value="4">4.0+</option>
@@ -1045,24 +1131,19 @@ export default function App() {
                   <ChevronDown className="absolute right-4 top-4 text-gray-400 pointer-events-none" size={18} />
                 </div>
              </div>
-          </div>
+         </div>
 
-          {/* 交通時間提示 */}
-          <div className="flex gap-2 text-[10px] text-gray-500 font-bold bg-white/50 p-3 rounded-xl border border-gray-100 justify-around">
-            <span className="flex items-center gap-1.5"><Footprints size={14} className="text-gray-400"/> 走 {travelTimes.walk} 分</span>
-            <div className="w-px bg-gray-200 h-4 self-center"></div>
-            <span className="flex items-center gap-1.5"><Bike size={14} className="text-gray-400"/> 騎 {travelTimes.bike} 分</span>
-            <div className="w-px bg-gray-200 h-4 self-center"></div>
-            <span className="flex items-center gap-1.5"><Car size={14} className="text-gray-400"/> 開 {travelTimes.car} 分</span>
-          </div>
+         <div className="flex gap-2 text-[10px] text-gray-500 font-bold bg-white/50 p-3 rounded-xl border border-gray-100 justify-around">
+           <span className="flex items-center gap-1.5"><Footprints size={14} className="text-gray-400"/> 走 {travelTimes.walk} 分</span>
+           <div className="w-px bg-gray-200 h-4 self-center"></div>
+           <span className="flex items-center gap-1.5"><Bike size={14} className="text-gray-400"/> 騎 {travelTimes.bike} 分</span>
+           <div className="w-px bg-gray-200 h-4 self-center"></div>
+           <span className="flex items-center gap-1.5"><Car size={14} className="text-gray-400"/> 開 {travelTimes.car} 分</span>
+         </div>
        </div>
 
-       <button 
-         onClick={executeSearch} 
-         className="w-full bg-gray-900 text-white py-4.5 rounded-2xl font-black text-lg shadow-xl shadow-gray-300 hover:bg-gray-800 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 mt-8"
-       >
-         <Search size={24} /> 
-         開始搜尋
+       <button onClick={executeSearch} className="w-full bg-gray-900 text-white py-4.5 rounded-2xl font-black text-lg shadow-xl shadow-gray-300 hover:bg-gray-800 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 mt-8">
+         <Search size={24} /> 開始搜尋
        </button>
     </div>
   );
@@ -1096,20 +1177,17 @@ export default function App() {
                 <div>
                   <h3 className="font-bold text-gray-800 truncate text-lg">{r.name}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                     <span className="text-xs text-gray-400 truncate bg-gray-50 px-1.5 py-0.5 rounded">{r.type}</span>
-                     <span className="text-xs text-rose-500 font-bold flex items-center gap-0.5"><MapPin size={10}/> {r.distance}km</span>
+                      <span className="text-xs text-gray-400 truncate bg-gray-50 px-1.5 py-0.5 rounded">{r.type}</span>
+                      <span className="text-xs text-rose-500 font-bold flex items-center gap-0.5"><MapPin size={10}/> {r.distance}km</span>
                   </div>
                 </div>
                 <div className="flex justify-between items-end mt-2">
                   <div className="flex gap-2 items-center">
-                     <StarRating rating={r.rating} />
-                     <PriceDisplay level={r.priceLevel} />
+                      <StarRating rating={r.rating} />
+                      <PriceDisplay level={r.priceLevel} />
                   </div>
-                  <button 
-                     onClick={(e) => toggleShortlist(e, r)} 
-                     className={`p-2.5 rounded-full transition-colors ${shortlist.some(item => item.id === r.id) ? 'bg-rose-50 text-rose-500' : 'bg-gray-100 text-gray-300 hover:bg-gray-200'}`}
-                  >
-                     <Heart size={18} fill={shortlist.some(item => item.id === r.id) ? "currentColor" : "none"} />
+                  <button onClick={(e) => toggleShortlist(e, r)} className={`p-2.5 rounded-full transition-colors ${shortlist.some(item => item.id === r.id) ? 'bg-rose-50 text-rose-500' : 'bg-gray-100 text-gray-300 hover:bg-gray-200'}`}>
+                      <Heart size={18} fill={shortlist.some(item => item.id === r.id) ? "currentColor" : "none"} />
                   </button>
                 </div>
               </div>
@@ -1140,42 +1218,38 @@ export default function App() {
             <h3 className="font-bold flex items-center gap-2 mb-3 text-lg"><Sparkles size={20} className="text-yellow-300"/> AI 幫你選</h3>
             {aiAnalysis ? (
               <div className="text-sm bg-white/10 p-4 rounded-xl backdrop-blur-md leading-relaxed animate-in fade-in border border-white/10">
-                 {aiAnalysis}
-                 <button onClick={() => setAiAnalysis("")} className="block w-full text-center text-xs mt-3 text-white/50 hover:text-white transition-colors border-t border-white/10 pt-2">清除重來</button>
+                  {aiAnalysis}
+                  <button onClick={() => setAiAnalysis("")} className="block w-full text-center text-xs mt-3 text-white/50 hover:text-white transition-colors border-t border-white/10 pt-2">清除重來</button>
               </div>
             ) : (
               <div>
-                 <p className="text-xs text-indigo-100 mb-4 opacity-90">猶豫不決嗎？讓 AI 毒舌評論家幫你分析這 {shortlist.length} 家餐廳！</p>
-                 <button onClick={handleAiGroupAnalysis} disabled={isAiAnalyzing} className="w-full py-3 bg-white text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-50 transition-colors shadow-sm">{isAiAnalyzing ? "正在思考中..." : "✨ 幫我分析"}</button>
+                  <p className="text-xs text-indigo-100 mb-4 opacity-90">猶豫不決嗎？讓 AI 毒舌評論家幫你分析這 {shortlist.length} 家餐廳！</p>
+                  <button onClick={handleAiGroupAnalysis} disabled={isAiAnalyzing} className="w-full py-3 bg-white text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-50 transition-colors shadow-sm">{isAiAnalyzing ? "正在思考中..." : "✨ 幫我分析"}</button>
               </div>
             )}
           </div>
           
           <div className="space-y-3 pb-8">
-             {shortlist.map(r => (
-               <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
-                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center font-bold text-gray-400 overflow-hidden shadow-inner">
-                       {r.photoUrl ? (
-                         <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" />
-                       ) : (
-                         r.name.charAt(0)
-                       )}
-                    </div>
-                    <div>
-                        <h4 className="font-bold text-gray-800 text-sm truncate max-w-[140px]">{r.name}</h4>
-                        <div className="text-[10px] text-gray-400 flex gap-2 font-bold mt-0.5">
-                            <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
-                            <span>{r.distance}km</span>
-                        </div>
-                    </div>
-                 </div>
-                 <div className="flex gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); handleSystemShare(r); }} className="p-2.5 text-teal-600 bg-teal-50 rounded-xl hover:bg-teal-100 transition-colors"><Share2 size={18} /></button>
-                    <button onClick={(e) => toggleShortlist(e, r)} className="p-2.5 text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"><X size={18}/></button>
-                 </div>
-               </div>
-             ))}
+              {shortlist.map(r => (
+                <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
+                  <div className="flex items-center gap-4">
+                     <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center font-bold text-gray-400 overflow-hidden shadow-inner">
+                        {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}
+                     </div>
+                     <div>
+                         <h4 className="font-bold text-gray-800 text-sm truncate max-w-[140px]">{r.name}</h4>
+                         <div className="text-[10px] text-gray-400 flex gap-2 font-bold mt-0.5">
+                             <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
+                             <span>{r.distance}km</span>
+                         </div>
+                     </div>
+                  </div>
+                  <div className="flex gap-2">
+                     <button onClick={(e) => { e.stopPropagation(); handleSystemShare(r); }} className="p-2.5 text-teal-600 bg-teal-50 rounded-xl hover:bg-teal-100 transition-colors"><Share2 size={18} /></button>
+                     <button onClick={(e) => toggleShortlist(e, r)} className="p-2.5 text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"><X size={18}/></button>
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
       )}
@@ -1194,20 +1268,14 @@ export default function App() {
       </div>
 
       <div className="h-24 bg-white/90 backdrop-blur-md border-t border-gray-100 flex items-center justify-around px-6 pb-6 fixed bottom-0 w-full max-w-md z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
-        <button 
-           onClick={() => setActiveTab('home')} 
-           className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-gray-900 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}
-        >
+        <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-gray-900 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}>
            <div className={`p-2 rounded-2xl transition-all ${activeTab === 'home' ? 'bg-gray-100 shadow-sm' : ''}`}>
              <Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} />
            </div>
            <span className="text-[10px] font-bold">搜尋</span>
         </button>
         
-        <button 
-           onClick={() => setActiveTab('shortlist')} 
-           className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'shortlist' ? 'text-rose-500 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}
-        >
+        <button onClick={() => setActiveTab('shortlist')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'shortlist' ? 'text-rose-500 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}>
            <div className={`p-2 rounded-2xl transition-all ${activeTab === 'shortlist' ? 'bg-rose-50 shadow-sm' : ''}`}>
              <div className="relative">
                 <Heart size={24} strokeWidth={activeTab === 'shortlist' ? 2.5 : 2} />
@@ -1217,10 +1285,7 @@ export default function App() {
            <span className="text-[10px] font-bold">清單</span>
         </button>
 
-        <button 
-           onClick={() => setActiveTab('social')} 
-           className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'social' ? 'text-teal-600 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}
-        >
+        <button onClick={() => setActiveTab('social')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'social' ? 'text-teal-600 -translate-y-2' : 'text-gray-300 hover:text-gray-500'}`}>
            <div className={`p-2 rounded-2xl transition-all ${activeTab === 'social' ? 'bg-teal-50 shadow-sm' : ''}`}>
              <MessageCircle size={24} strokeWidth={activeTab === 'social' ? 2.5 : 2} />
            </div>
