@@ -19,8 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";          
-
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
@@ -1106,6 +1105,34 @@ export default function App() {
       } else {
            setMyRooms(prev => prev.filter(r => r.id !== roomId));
       }
+  };
+
+  // --- 補上遺失的 handleAiGroupAnalysis 函式 ---
+  const handleAiGroupAnalysis = async () => {
+    if (shortlist.length === 0) {
+      alert("候選清單是空的，無法進行分析喔！");
+      return;
+    }
+
+    setIsAiAnalyzing(true);
+    setAiAnalysis(""); // 先清空舊的結果
+
+    try {
+      // 準備給 AI 的提示詞
+      const restaurantNames = shortlist.map(r => r.name).join(", ");
+      const prompt = `我們現在有這些餐廳候選名單：${restaurantNames}。
+請用幽默、有點毒舌但又中肯的語氣，幫我們分析這些選擇，並根據餐廳類型、口味多樣性給出建議。
+最後請推薦一個「大家最可能滿意」的選擇，並給出理由。字數控制在 200 字以內。`;
+
+      // 呼叫 Gemini
+      const result = await callGemini(prompt);
+      setAiAnalysis(result);
+    } catch (error) {
+      console.error("AI Analysis Error:", error);
+      setAiAnalysis("AI 分析暫時無法使用，請稍後再試。");
+    } finally {
+      setIsAiAnalyzing(false);
+    }
   };
 
   return (
