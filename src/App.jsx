@@ -5,7 +5,7 @@ import {
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
   Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
-  Minimize2, Maximize2, Tag
+  Tag
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -52,7 +52,6 @@ const DEFAULT_CATEGORIES = ['全部', '台式', '日式', '韓式', '美式', '�
 
 // --- 工具函數 ---
 
-// 嘗試將 Google Place Type 轉換為中文分類
 const mapGoogleTypeToCategory = (types) => {
   if (!types || types.length === 0) return '其他';
   const t = types.join(' ').toLowerCase();
@@ -129,7 +128,6 @@ const StarRating = ({ rating }) => (
   </div>
 );
 
-// 互動式評分星星 (支援半顆星)
 const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
   const [hoverValue, setHoverValue] = useState(null);
 
@@ -153,9 +151,9 @@ const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
             onMouseMove={(e) => handleMouseMove(e, index)}
             onClick={() => !readOnly && onChange(hoverValue)}
           >
-            <Star size={20} className="text-stone-300 absolute top-0 left-0" />
+            <Star size={18} className="text-stone-300 absolute top-0 left-0" />
             <div className="absolute top-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-               <Star size={20} className="text-yellow-400 fill-yellow-400" />
+               <Star size={18} className="text-yellow-400 fill-yellow-400" />
             </div>
           </div>
         );
@@ -171,9 +169,8 @@ const calculateTravelTime = (meters) => {
   return { walk, bike, car };
 };
 
-// --- 子組件定義 ---
+// --- 子組件 ---
 
-// 分類篩選器組件
 const CategoryTabs = ({ categories, selected, onSelect }) => (
   <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar">
     {categories.map(cat => (
@@ -309,6 +306,27 @@ const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
             placeholder="輸入暱稱"
           />
         </div>
+        <div className="space-y-3 mb-6">
+           <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">形象風格</label>
+           <div className="flex gap-3 bg-stone-100 p-1 rounded-2xl">
+              <button onClick={() => setUserProfile({...userProfile, gender: 'male', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'male' && !userProfile.customAvatar ? 'bg-white text-blue-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}>
+                 <User size={18} /> 男生
+              </button>
+              <button onClick={() => setUserProfile({...userProfile, gender: 'female', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'female' && !userProfile.customAvatar ? 'bg-white text-rose-500 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}>
+                 <User size={18} /> 女生
+              </button>
+           </div>
+        </div>
+        <div className="space-y-3">
+           <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">快速選擇頭像</label>
+           <div className="grid grid-cols-4 gap-3">
+              {avatarSeeds.map(seed => (
+                 <div key={seed} onClick={() => setUserProfile({...userProfile, customAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`})} className="aspect-square rounded-2xl bg-stone-50 overflow-hidden cursor-pointer hover:ring-4 hover:ring-rose-200 transition-all shadow-sm border border-stone-100">
+                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`} className="w-full h-full object-cover" />
+                 </div>
+              ))}
+           </div>
+        </div>
         <button onClick={() => { setUserProfile(prev => ({...prev, name: localName})); onClose(); }} className="w-full mt-8 bg-stone-800 text-white py-4 rounded-2xl font-bold shadow-lg shadow-stone-300 hover:bg-stone-700 active:scale-95 transition-all">
            儲存設定
         </button>
@@ -343,7 +361,7 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
                 return {
                     id: place.id,
                     name: place.displayName,
-                    type: mapGoogleTypeToCategory(place.types), // Auto categorize
+                    type: mapGoogleTypeToCategory(place.types),
                     rating: place.rating,
                     priceLevel: place.priceLevel,
                     address: place.formattedAddress,
@@ -394,6 +412,7 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
                             <button className="self-center p-2 bg-orange-50 text-orange-500 rounded-full"><Plus size={18}/></button>
                         </div>
                     ))}
+                    {!loading && results.length === 0 && <div className="text-center text-slate-400 py-10 text-sm">輸入關鍵字尋找餐廳<br/>點擊 + 加入共同清單</div>}
                 </div>
             </div>
         </div>
@@ -411,7 +430,6 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
 
   useEffect(() => { if(subTab === 'chat' && messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, subTab]);
 
-  // Define updateSharedItemStatus INTERNALLY as it depends on room and userProfile which are available here
   const updateSharedItemStatus = async (itemId, type, value) => {
       if (!db) return;
       const ref = doc(db, "rooms", room.id, "shared_restaurants", itemId);
@@ -552,7 +570,9 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                   {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
                               </div>
 
-                              <div className="flex justify-center"><InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} /></div></div>
+                              <div className="flex justify-center border-t border-stone-200 pt-2">
+                                  <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
+                              </div>
                           </div>
                       </div>
                   ))}
@@ -1163,7 +1183,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen bg-stone-50 max-w-md mx-auto relative overflow-hidden flex flex-col font-sans font-rounded text-stone-800">
+    <div className="h-[100dvh] bg-stone-50 max-w-md mx-auto relative overflow-hidden flex flex-col font-sans font-rounded text-stone-800">
       {isMapMode && <RealMapSelector initialLocation={virtualLocation} userLocation={realLocation} onConfirm={(loc)=>{setVirtualLocation(loc); setIsMapMode(false);}} onCancel={()=>setIsMapMode(false)} />}
       {showProfileModal && <ProfileModal userProfile={userProfile} setUserProfile={setUserProfile} onClose={() => setShowProfileModal(false)} />}
       
