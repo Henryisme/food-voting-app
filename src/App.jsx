@@ -19,7 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";         
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";        
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -558,20 +558,25 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                           </div>
                           <div className="grid grid-cols-2 gap-2 mt-2">
                               <div className="bg-stone-50 p-2 rounded-xl"><span className="text-[10px] font-bold text-stone-400 block mb-1">我的狀態</span><div className="flex gap-1"><button onClick={() => updateSharedItemStatus(item.id, 'eaten', true)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-stone-200 text-stone-400'}`}><CheckCircle size={10}/> 吃過</button><button onClick={() => updateSharedItemStatus(item.id, 'eaten', false)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-stone-200 text-stone-400'}`}><Circle size={10}/> 沒吃</button></div></div>
-                              <div className="bg-stone-50 p-2 rounded-xl"><div className="flex justify-between items-center mb-1"><span className="text-[10px] font-bold text-stone-400">我的評分</span>{item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}</div>
+                              <div className="bg-stone-50 p-2 rounded-xl">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-stone-400">我的評分</span>
+                                  {item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}
+                                </div>
                               
-                              <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
-                                  {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
-                                      <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
-                                          <span>{user}</span>
-                                          <span className="flex items-center gap-0.5 text-yellow-500 font-bold"><Star size={8} fill="currentColor"/> {score}</span>
-                                      </div>
-                                  ))}
-                                  {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
-                              </div>
+                                <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
+                                    {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
+                                        <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
+                                            <span>{user}</span>
+                                            <span className="flex items-center gap-0.5 text-yellow-500 font-bold"><Star size={8} fill="currentColor"/> {score}</span>
+                                        </div>
+                                    ))}
+                                    {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
+                                </div>
 
-                              <div className="flex justify-center border-t border-stone-200 pt-2">
-                                  <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
+                                <div className="flex justify-center border-t border-stone-200 pt-2">
+                                    <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
+                                </div>
                               </div>
                           </div>
                       </div>
@@ -894,6 +899,23 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
         </div>
     );
 };
+
+const Header = ({ userProfile, setShowProfileModal }) => (
+    <div className="px-6 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+            <div onClick={() => setShowProfileModal(true)} className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer relative group transition-transform active:scale-95">
+                <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
+            </div>
+            <div>
+                <h1 className="text-lg font-black text-stone-800 leading-tight">今天吃什麼 <Utensils className="inline text-orange-500 w-4 h-4" /></h1>
+                <p className="text-xs text-stone-400 font-bold">Hi, {userProfile.name}</p>
+            </div>
+        </div>
+        <button className="p-2 bg-white rounded-full shadow-sm text-stone-400 hover:text-stone-600 transition-colors">
+            <Settings size={20} />
+        </button>
+    </div>
+);
 
 // --- App Component ---
 
