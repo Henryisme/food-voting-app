@@ -400,7 +400,7 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     );
 };
 
-const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
+const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants }) => {
   const [msgInput, setMsgInput] = useState("");
   const [subTab, setSubTab] = useState("chat"); 
   const messagesEndRef = useRef(null);
@@ -411,16 +411,17 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
 
   useEffect(() => { if(subTab === 'chat' && messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, subTab]);
 
-  useEffect(() => {
-      if (!db || !room?.id) return;
-      const q = query(collection(db, "rooms", room.id, "messages"));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        newMessages.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-        setMessages(newMessages);
-      });
-      return () => unsubscribe();
-  }, [room?.id]);
+  // Define updateSharedItemStatus INTERNALLY as it depends on room and userProfile which are available here
+  const updateSharedItemStatus = async (itemId, type, value) => {
+      if (!db) return;
+      const ref = doc(db, "rooms", room.id, "shared_restaurants", itemId);
+      try { 
+          if (type === 'rating') await updateDoc(ref, { [`ratings.${userProfile.name}`]: value }); 
+          else if (type === 'eaten') await updateDoc(ref, { [`eatenStatus.${userProfile.name}`]: value }); 
+      } catch (e) { 
+          console.error("更新失敗", e); 
+      }
+  };
 
   const handleRenameRoom = async () => {
       const newName = prompt("請輸入新的房間名稱：", room.name);
@@ -457,13 +458,10 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   const copyInviteLink = () => { if (!room) return; const url = `${window.location.origin}${window.location.pathname}?room=${room.code}`; if (navigator.share) navigator.share({ title: '加入美食團', text: `加入代碼：${room.code}`, url }).catch(console.error); else { navigator.clipboard.writeText(url); alert("連結已複製！"); } };
 
   const filteredSharedList = selectedCategory === '全部' ? sharedRestaurants : sharedRestaurants.filter(r => r.type === selectedCategory);
-
-  // Collect all unique categories from the list plus defaults
   const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type)])];
 
   return (
     <div className="flex flex-col h-full bg-stone-50">
-       {/* Room Header */}
        <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-stone-200">
           <div className="flex items-center gap-2">
             <button onClick={onBack} className="p-2 -ml-2 text-stone-500 hover:bg-stone-100 rounded-full"><ChevronLeft size={24}/></button>
@@ -481,13 +479,11 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
           </div>
        </div>
 
-       {/* Sub Tabs */}
        <div className="flex bg-white border-b border-stone-200 shrink-0">
           <button onClick={() => setSubTab('chat')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'chat' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}><MessageCircle size={16}/> 聊天室</button>
           <button onClick={() => setSubTab('list')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'list' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}><List size={16}/> 共同清單</button>
        </div>
        
-       {/* Content Area */}
        <div className="flex-1 overflow-y-auto relative scroll-smooth">
           {subTab === 'chat' ? (
               <div className="p-4 space-y-6 pb-24">
@@ -803,21 +799,6 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
 };
 
 const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAnalysis, handleAiGroupAnalysis, isAiAnalyzing, setShowDetail, handleSystemShare, toggleShortlist }) => {
-    // Local state to manage shortlist items with their custom categories
-    // Since shortlist prop is from App state (Google Maps results), we need to enhance it locally or pass updater.
-    // For this demo, let's just allow filtering based on what's available.
-    // To support "Custom Categories", we need to store the category change.
-    // Let's assume shortlist items can have a 'customCategory' property.
-    // But since shortlist is in App, we need a function to update it.
-    // I will add a `updateShortlistItem` function to App and pass it down.
-    
-    // BUT for now, since I cannot change App's state structure easily without potentially breaking things,
-    // I will implement the UI for filtering based on the 'type' property which we mapped from Google.
-    // And allow "editing" by just showing a prompt that *would* update if we had the state updater.
-    // Wait, I can pass `setShortlist` from App to here.
-    
-    // Let's rely on `toggleShortlist` for adding/removing.
-    // I will add `selectedCategory` state here.
     const [selectedCategory, setSelectedCategory] = useState('全部');
     
     // Get available categories
@@ -920,10 +901,10 @@ export default function App() {
   const [myRooms, setMyRooms] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
-  const [sharedRestaurants, setSharedRestaurants] = useState([]); // Moved up
+  const [sharedRestaurants, setSharedRestaurants] = useState([]); 
 
-  // ... (Effects are mostly same, just checking map script load)
   useEffect(() => {
+    // Geo Init
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -932,7 +913,7 @@ export default function App() {
           setVirtualLocation(loc);
         },
         () => {
-          const defaultLoc = { lat: 25.0330, lng: 121.5654 }; 
+          const defaultLoc = { lat: 25.0330, lng: 121.5654 }; // Taipei
           setRealLocation(defaultLoc);
           setVirtualLocation(defaultLoc);
         }
@@ -1008,7 +989,7 @@ export default function App() {
           name: restaurant.name || "未命名餐廳",
           address: restaurant.address || "",
           addedBy: userProfile.name,
-          type: restaurant.customCategory || restaurant.type || "美食", // Use custom category if avail
+          type: restaurant.customCategory || restaurant.type || "美食", 
           photoUrl: restaurant.photoUrl || null,
           ratings: {}, 
           eatenStatus: {}, 
@@ -1247,7 +1228,6 @@ export default function App() {
                     setShowDetail={setShowDetail} 
                     virtualLocation={virtualLocation}
                     sharedRestaurants={sharedRestaurants}
-                    updateSharedItemStatus={updateSharedItemStatus}
                 />
             ) : (
                 <LobbyView 
