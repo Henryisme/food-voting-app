@@ -19,7 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";         
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";          
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -307,7 +307,7 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     );
 };
 
-// SocialView Component - Fixed Identifier error
+// SocialView Component - Fixed duplicate variable declaration
 const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
   const [msgInput, setMsgInput] = useState("");
   const [subTab, setSubTab] = useState("chat"); 
