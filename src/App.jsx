@@ -307,7 +307,6 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     );
 };
 
-// SocialView - Fixed prop destruction and logic
 const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
   const [msgInput, setMsgInput] = useState("");
   const [subTab, setSubTab] = useState("chat"); 
@@ -792,6 +791,23 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
         </div>
     );
 };
+
+const Header = ({ userProfile, setShowProfileModal }) => (
+    <div className="px-6 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+            <div onClick={() => setShowProfileModal(true)} className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer relative group transition-transform active:scale-95">
+                <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
+            </div>
+            <div>
+                <h1 className="text-lg font-black text-stone-800 leading-tight">今天吃什麼 <Utensils className="inline text-orange-500 w-4 h-4" /></h1>
+                <p className="text-xs text-stone-400 font-bold">Hi, {userProfile.name}</p>
+            </div>
+        </div>
+        <button className="p-2 bg-white rounded-full shadow-sm text-stone-400 hover:text-stone-600 transition-colors">
+            <Settings size={20} />
+        </button>
+    </div>
+);
 
 // --- App Component ---
 
