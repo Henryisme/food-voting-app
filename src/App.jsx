@@ -5,7 +5,7 @@ import {
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
   Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
-  Minimize2, Maximize2, Tag
+  Minimize2, Maximize2, Tag, DollarSign
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -192,6 +192,9 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   const mapRef = useRef(null);
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
   const [mapError, setMapError] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
   
   useEffect(() => {
     if (!window.google || !window.google.maps) {
@@ -203,10 +206,39 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
     try {
       const map = new window.google.maps.Map(mapRef.current, { center: initialLocation, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
       const marker = new window.google.maps.Marker({ position: initialLocation, map: map, draggable: true, animation: window.google.maps.Animation.DROP, title: "拖曳我來修改位置" });
-      map.addListener("click", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; marker.setPosition(newLoc); setSelectedLoc(newLoc); map.panTo(newLoc); });
-      marker.addListener("dragend", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; setSelectedLoc(newLoc); map.panTo(newLoc); });
+      
+      mapInstanceRef.current = map;
+      markerRef.current = marker;
+
+      map.addListener("click", (e) => { 
+          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
+          marker.setPosition(newLoc); 
+          setSelectedLoc(newLoc); 
+          map.panTo(newLoc); 
+      });
+      marker.addListener("dragend", (e) => { 
+          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
+          setSelectedLoc(newLoc); 
+          map.panTo(newLoc); 
+      });
     } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
   }, []);
+
+  const handleAddressSearch = () => {
+      if (!window.google || !window.google.maps || !addressInput.trim()) return;
+      const geocoder = new window.google.maps.Geocoder();
+      geocoder.geocode({ address: addressInput }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+              const location = results[0].geometry.location;
+              const newLoc = { lat: location.lat(), lng: location.lng() };
+              setSelectedLoc(newLoc);
+              if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
+              if (markerRef.current) markerRef.current.setPosition(newLoc);
+          } else {
+              alert('找不到該地址，請嘗試更具體的地址名稱。');
+          }
+      });
+  };
 
   return (
     <div className="fixed inset-0 z-[60] bg-white flex flex-col animate-in fade-in font-rounded">
@@ -214,12 +246,27 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
         <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
       </div>
-      <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-20">
+      
+      <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-36">
         {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
         {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
       </div>
+
       <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-         <div className="flex justify-between text-xs text-slate-500 px-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
+         {/* 地址搜尋欄 */}
+         <div className="flex gap-2">
+             <input 
+                type="text" 
+                value={addressInput} 
+                onChange={(e) => setAddressInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()}
+                placeholder="輸入地址或地標 (例如: 台北101)" 
+                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
+             />
+             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold">搜尋</button>
+         </div>
+
+         <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
          <div className="flex gap-2">
             <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
             <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認修改</button>
@@ -609,7 +656,7 @@ const NavBar = ({ activeTab, setActiveTab }) => {
   );
 };
 
-const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, realLocation, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, travelTimes, executeSearch, loading }) => (
+const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, realLocation, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, executeSearch, loading }) => (
   <div className="p-6 space-y-8 font-rounded bg-gradient-to-b from-stone-50 to-white min-h-full pb-32">
      <style>{`@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap'); .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }`}</style>
      <div className="text-center mt-6 flex flex-col items-center">
@@ -648,6 +695,7 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
                <div className="relative">
                  <select value={distFilter} onChange={(e) => setDistFilter(parseInt(e.target.value))} className="w-full appearance-none bg-white border-2 border-stone-200 text-stone-600 py-3 px-3 rounded-xl text-xs font-bold outline-none focus:border-orange-400 transition-colors">
                    <option value={100}>100m</option><option value={300}>300m</option><option value={500}>500m</option><option value={1000}>1km</option><option value={2000}>2km</option><option value={5000}>5km</option>
+                   <option value={10000}>10km</option><option value={20000}>20km</option>
                  </select>
                  <ChevronDown className="absolute right-3 top-3.5 text-stone-400 pointer-events-none" size={14} />
                </div>
@@ -662,6 +710,21 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
               </div>
            </div>
        </div>
+       
+       <div className="space-y-2">
+           <label className="text-sm font-bold text-stone-700 flex items-center gap-2"><DollarSign size={18} className="text-green-500"/> 價格</label>
+           <div className="relative">
+            <select value={priceFilter} onChange={(e) => setPriceFilter(e.target.value)} className="w-full appearance-none bg-white border-2 border-stone-200 text-stone-600 py-3 px-3 rounded-xl text-xs font-bold outline-none focus:border-green-400 transition-colors">
+              <option value="all">價格不限</option>
+              <option value="1">$ (平價 - 含未標示)</option>
+              <option value="2">$$ (適中)</option>
+              <option value="3">$$$ (稍貴)</option>
+              <option value="4">$$$$ (高檔)</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-3.5 text-stone-400 pointer-events-none" size={14} />
+          </div>
+       </div>
+
        <div className="flex gap-2 text-[10px] text-stone-500 font-bold bg-white/50 p-3 rounded-xl border border-stone-200 justify-around">
          <span className="flex items-center gap-1.5"><Footprints size={14} className="text-stone-400"/> 走 {travelTimes.walk} 分</span>
          <div className="w-px bg-stone-200 h-4 self-center"></div>
@@ -825,6 +888,7 @@ export default function App() {
   const [timeFilter, setTimeFilter] = useState('lunch'); 
   const [distFilter, setDistFilter] = useState(500); 
   const [ratingFilter, setRatingFilter] = useState('all');
+  const [priceFilter, setPriceFilter] = useState('all'); // 新增價格篩選狀態
   const [hasSearched, setHasSearched] = useState(false);
   const [travelTimes, setTravelTimes] = useState(calculateTravelTime(500));
   const [restaurants, setRestaurants] = useState([]);
@@ -891,6 +955,20 @@ export default function App() {
           const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
           list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); 
           setSharedRestaurants(list);
+      });
+      return () => unsubscribe();
+  }, [room?.id]);
+
+  // Load Messages for Current Room (修復訊息不顯示問題)
+  useEffect(() => {
+      if (!db || !room?.id) {
+          if(!room) setMessages([]); // 離開房間清空訊息
+          return;
+      }
+      const q = query(collection(db, "rooms", room.id, "messages"), orderBy("createdAt", "asc")); 
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+          const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+          setMessages(msgs);
       });
       return () => unsubscribe();
   }, [room?.id]);
@@ -1016,6 +1094,20 @@ export default function App() {
             }));
             let filtered = formatted.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
             if (ratingFilter !== 'all') filtered = filtered.filter(r => (r.rating || 0) >= parseInt(ratingFilter));
+            
+            // 價格篩選邏輯 (無標示視為 0)
+            if (priceFilter !== 'all') {
+                const targetPrice = parseInt(priceFilter);
+                filtered = filtered.filter(r => {
+                    const p = r.priceLevel;
+                    // 將 undefined/null 視為 0
+                    const effectivePrice = (p === undefined || p === null) ? 0 : p;
+                    
+                    if (targetPrice === 1) return effectivePrice <= 1; // 平價: 含 Free (0) & Inexpensive (1)
+                    return effectivePrice === targetPrice;
+                });
+            }
+
             filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
             if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
             setRestaurants(filtered);
@@ -1154,6 +1246,8 @@ export default function App() {
             setDistFilter={setDistFilter}
             ratingFilter={ratingFilter}
             setRatingFilter={setRatingFilter}
+            priceFilter={priceFilter}
+            setPriceFilter={setPriceFilter}
             travelTimes={travelTimes}
             executeSearch={executeSearch}
             loading={loading}
