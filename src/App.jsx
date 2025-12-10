@@ -19,7 +19,8 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";        
+
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
@@ -188,8 +189,8 @@ const calculateTravelTime = (meters) => {
 
 // --- 子組件 ---
 
-const CategoryTabs = ({ categories, selected, onSelect }) => (
-  <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar">
+const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
+  <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar items-center">
     {categories.map(cat => (
       <button
         key={cat}
@@ -203,66 +204,39 @@ const CategoryTabs = ({ categories, selected, onSelect }) => (
         {cat}
       </button>
     ))}
+    {onAddCategory && (
+        <button onClick={onAddCategory} className="whitespace-nowrap px-3 py-1.5 rounded-full bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200 hover:text-stone-600 transition-colors flex items-center justify-center">
+            <Plus size={14} strokeWidth={3}/>
+        </button>
+    )}
   </div>
 );
 
-// --- Decision Maker Modal (New Feature) ---
+// --- Decision Maker Modal (Updated) ---
 const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); // 'wheel' or 'ladder'
     const [result, setResult] = useState(null);
     const [isSpinning, setIsSpinning] = useState(false);
     const canvasRef = useRef(null);
-    const [ladderPaths, setLadderPaths] = useState([]);
+    
+    // Ladder Logic States
+    const [ladderPaths, setLadderPaths] = useState([]); // Array of rows
     const [ladderResultIndex, setLadderResultIndex] = useState(-1);
+    const [ladderActivePath, setLadderActivePath] = useState([]); // For animation drawing
+    const [selectedLadderStart, setSelectedLadderStart] = useState(null); // Which index user clicked
 
-    // --- Wheel Logic ---
-    const spinWheel = () => {
-        if (isSpinning) return;
-        setIsSpinning(true);
-        setResult(null);
-        
-        // Random duration between 3-5 seconds
-        const duration = 3000 + Math.random() * 2000;
-        // Random final angle
-        const finalAngle = 360 * 5 + Math.random() * 360; 
-        
-        // CSS rotation logic handled by style in render
-        setTimeout(() => {
-            const actualAngle = finalAngle % 360;
-            const sliceSize = 360 / candidates.length;
-            // Calculate index: angle increases clockwise, so 0 is right. CSS rotate starts from top (-90deg offset usually needed or 0 is top).
-            // Let's assume standard CSS rotate: 0 is top.
-            // Items are distributed. The one at top is the winner.
-            // Index at top = (360 - (actualAngle % 360)) / sliceSize
-            const winningIndex = Math.floor(((360 - actualAngle + (sliceSize/2)) % 360) / sliceSize);
-            setResult(candidates[winningIndex % candidates.length]);
-            setIsSpinning(false);
-        }, duration);
-        
-        // We'll use a ref to store the rotation for the DOM element
-        if(canvasRef.current) {
-            canvasRef.current.style.transition = `transform ${duration}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
-            canvasRef.current.style.transform = `rotate(${finalAngle}deg)`;
-        }
-    };
+    // Wheel Colors - Vivid and distinct
+    const WHEEL_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF8C42', '#A8E6CF', '#DCEDC1', '#FFD3B6', '#FFAAA5'];
 
-    // --- Ladder Logic ---
-    const startLadder = () => {
-        if(isSpinning) return;
-        setIsSpinning(true);
-        setResult(null);
-        
-        // Generate ladder structure
-        const numCandidates = candidates.length;
-        const steps = 8; // number of vertical segments
+    // Generate random ladder structure
+    const generateLadder = (count) => {
+        const steps = 10; // More steps for better visuals
         const bridges = [];
-        
-        // Generate random bridges
         for(let i=0; i<steps; i++) {
             const rowBridges = [];
-            for(let j=0; j<numCandidates-1; j++) {
-                // 50% chance to have a bridge, but avoid consecutive horizontal lines
-                if(Math.random() > 0.5 && (j===0 || !rowBridges[j-1])) {
+            for(let j=0; j<count-1; j++) {
+                // ~40% chance of bridge, ensure no consecutive bridges
+                if(Math.random() > 0.6 && (j===0 || !rowBridges[j-1])) {
                     rowBridges[j] = true;
                 } else {
                     rowBridges[j] = false;
@@ -270,61 +244,145 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             }
             bridges.push(rowBridges);
         }
-        
-        setLadderPaths(bridges);
+        return bridges;
+    };
 
-        // Calculate path for a random start point (or we can animate all?)
-        // Let's pick a random start point for the "system" to choose for us
-        const startIdx = Math.floor(Math.random() * numCandidates);
-        
-        // Simulate path
-        let currentLane = startIdx;
-        const pathTrace = [{lane: currentLane, step: -1}]; // Start
-        
-        for(let i=0; i<steps; i++) {
-            // Check left bridge
-            if(currentLane > 0 && bridges[i][currentLane-1]) {
-                currentLane--;
-            } 
-            // Check right bridge
-            else if(currentLane < numCandidates - 1 && bridges[i][currentLane]) {
-                currentLane++;
-            }
-            pathTrace.push({lane: currentLane, step: i});
+    // Initialize ladder when mode changes or candidates change
+    useEffect(() => {
+        if(mode === 'ladder') {
+            setLadderPaths(generateLadder(candidates.length));
+            setLadderActivePath([]);
+            setLadderResultIndex(-1);
+            setSelectedLadderStart(null);
+            setResult(null);
         }
+    }, [mode, candidates.length]);
+
+    // --- Wheel Logic ---
+    const spinWheel = () => {
+        if (isSpinning) return;
+        setIsSpinning(true);
+        setResult(null);
         
-        // Delay to show animation effect (simplified here as just a timeout)
+        const duration = 4000; // 4 seconds spin
+        const spinRounds = 5 + Math.random() * 3; // 5 to 8 rounds
+        const finalAngle = spinRounds * 360 + Math.random() * 360; 
+        
+        if(canvasRef.current) {
+            // Apply transition
+            canvasRef.current.style.transition = `transform ${duration}ms cubic-bezier(0.25, 0.1, 0.25, 1)`;
+            canvasRef.current.style.transform = `rotate(${finalAngle}deg)`;
+        }
+
         setTimeout(() => {
-            setLadderResultIndex(currentLane);
-            setResult(candidates[currentLane]);
+            // Calculate result
+            // CSS rotate 0deg puts index 0 at top-right (if using conical gradient normally).
+            // Actually conic gradient starts at 12 o'clock (0deg) going clockwise?
+            // Usually CSS conic-gradient starts at top (0deg).
+            // But we rotated the container. 
+            // The item at the top (pointer) is determined by `360 - (finalAngle % 360)`.
+            const normalizedAngle = finalAngle % 360;
+            const sliceSize = 360 / candidates.length;
+            // The pointer is at top (0 degrees relative to wheel center).
+            // Wheel rotated clockwise by `normalizedAngle`.
+            // So index 0 which was at 0deg is now at `normalizedAngle`.
+            // The slice currently at 0deg is the one that was at `360 - normalizedAngle` originally.
+            const targetAngle = (360 - normalizedAngle) % 360;
+            
+            // Adjust for slice center if needed, but assuming slice 0 starts at 0deg.
+            // If slice 0 spans 0 to 45deg (for 8 items).
+            const winningIndex = Math.floor(targetAngle / sliceSize);
+            
+            setResult(candidates[winningIndex]);
             setIsSpinning(false);
-        }, 2000);
+        }, duration);
+    };
+
+    // --- Ladder Logic ---
+    const startLadder = (startIdx) => {
+        if(isSpinning) return;
+        setSelectedLadderStart(startIdx);
+        setIsSpinning(true);
+        setResult(null);
+        setLadderActivePath([]);
+        
+        let currentLane = startIdx;
+        let currentDepth = 0; // 0 to steps
+        const paths = [{lane: startIdx, depth: 0, type: 'start'}]; // Record coordinates for drawing
+        const steps = ladderPaths.length;
+        
+        // We will execute moves in an interval to animate
+        const intervalId = setInterval(() => {
+            if(currentDepth >= steps) {
+                // Reached bottom
+                clearInterval(intervalId);
+                setLadderResultIndex(currentLane);
+                setResult(candidates[currentLane]);
+                setIsSpinning(false);
+                return;
+            }
+
+            // Move Vertical (Down half step)
+            // Then Check Horizontal
+            // Then Move Vertical (Down half step)
+            // Simplified: Just check current row bridge
+            
+            const row = ladderPaths[currentDepth];
+            let nextLane = currentLane;
+            
+            // Check left bridge (moving from currentLane to currentLane-1)
+            if (currentLane > 0 && row[currentLane-1]) {
+                nextLane = currentLane - 1;
+            } 
+            // Check right bridge (moving from currentLane to currentLane+1)
+            else if (currentLane < candidates.length - 1 && row[currentLane]) {
+                nextLane = currentLane + 1;
+            }
+
+            // Logic: 
+            // 1. Move vertical segment down
+            // 2. If bridge, move horizontal
+            
+            // Visual path update
+            if (nextLane !== currentLane) {
+                // Add horizontal movement point
+                paths.push({lane: nextLane, depth: currentDepth + 1, type: 'cross'}); // Simplified for visualization
+            } else {
+                paths.push({lane: nextLane, depth: currentDepth + 1, type: 'straight'});
+            }
+            
+            setLadderActivePath([...paths]);
+            
+            currentLane = nextLane;
+            currentDepth++;
+
+        }, 300); // Speed of each step
     };
 
     return (
         <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
                 <div className="p-4 bg-stone-900 text-white flex justify-between items-center">
-                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> 命運決策台</h3>
+                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> Let God Decide</h3>
                     <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full"><X size={20}/></button>
                 </div>
                 
                 <div className="flex border-b border-stone-200">
-                    <button onClick={() => {setMode('wheel'); setResult(null);}} className={`flex-1 py-3 font-bold text-sm ${mode==='wheel' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>幸運轉盤</button>
-                    <button onClick={() => {setMode('ladder'); setResult(null);}} className={`flex-1 py-3 font-bold text-sm ${mode==='ladder' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>鬼腳圖 (爬梯子)</button>
+                    <button onClick={() => {setMode('wheel'); setResult(null); setIsSpinning(false);}} className={`flex-1 py-3 font-bold text-sm ${mode==='wheel' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>幸運轉盤</button>
+                    <button onClick={() => {setMode('ladder'); setResult(null); setIsSpinning(false);}} className={`flex-1 py-3 font-bold text-sm ${mode==='ladder' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>爬梯子</button>
                 </div>
 
-                <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-hidden bg-stone-50 relative">
+                <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-hidden bg-stone-50 relative min-h-[300px]">
                     
                     {mode === 'wheel' && (
                         <div className="relative w-64 h-64">
                             {/* Wheel */}
                             <div 
                                 ref={canvasRef}
-                                className="w-full h-full rounded-full border-4 border-white shadow-xl overflow-hidden relative transition-transform"
+                                className="w-full h-full rounded-full border-4 border-white shadow-xl overflow-hidden relative"
                                 style={{
                                     background: `conic-gradient(${candidates.map((c, i) => 
-                                        `${i % 2 === 0 ? '#fb923c' : '#fed7aa'} ${i * (360/candidates.length)}deg ${(i+1) * (360/candidates.length)}deg`
+                                        `${WHEEL_COLORS[i % WHEEL_COLORS.length]} ${i * (360/candidates.length)}deg ${(i+1) * (360/candidates.length)}deg`
                                     ).join(', ')})`
                                 }}
                             >
@@ -337,11 +395,11 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                             transformOrigin: '50% 50%'
                                         }}
                                     >
-                                        <span className="text-xs font-bold text-stone-800 w-24 truncate rotate-180 writing-vertical-rl" style={{writingMode: 'vertical-rl'}}>{c.name}</span>
+                                        <span className="text-xs font-bold text-white drop-shadow-md w-24 truncate rotate-180 writing-vertical-rl" style={{writingMode: 'vertical-rl'}}>{c.name}</span>
                                     </div>
                                 ))}
                             </div>
-                            {/* Pointer */}
+                            {/* Pointer - Fixed at top */}
                             <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-10 z-10 filter drop-shadow-md">
                                 <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[20px] border-t-red-600"></div>
                             </div>
@@ -357,47 +415,96 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                     )}
 
                     {mode === 'ladder' && (
-                        <div className="w-full h-64 flex flex-col relative bg-white rounded-xl border border-stone-200 p-2 overflow-hidden">
-                            <div className="flex justify-between mb-2">
+                        <div className="w-full h-full flex flex-col relative bg-white rounded-xl border border-stone-200 p-4 select-none">
+                            {/* Top Buttons (Start Points) */}
+                            <div className="flex justify-between mb-4 z-10">
                                 {candidates.map((_, i) => (
-                                    <div key={i} className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-xs font-bold text-stone-500">{i+1}</div>
+                                    <button 
+                                        key={i} 
+                                        onClick={() => startLadder(i)}
+                                        disabled={isSpinning}
+                                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm transition-all ${
+                                            selectedLadderStart === i 
+                                                ? 'bg-orange-500 text-white scale-110 ring-2 ring-orange-200' 
+                                                : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                                        } ${isSpinning && selectedLadderStart !== i ? 'opacity-30' : ''}`}
+                                    >
+                                        {i+1}
+                                    </button>
                                 ))}
                             </div>
-                            <div className="flex-1 relative flex justify-between px-3">
+
+                            {/* Ladder Grid Container */}
+                            <div className="flex-1 relative flex justify-between px-4 pb-6">
+                                {/* Vertical Lines */}
                                 {candidates.map((_, i) => (
-                                    <div key={i} className="w-0.5 h-full bg-stone-300 relative"></div>
+                                    <div key={i} className="w-0.5 h-full bg-stone-200 relative"></div>
                                 ))}
-                                {/* Render random bridges purely for visual effect here - simplistic view */}
+                                
+                                {/* Horizontal Bridges */}
                                 {ladderPaths.map((row, rIdx) => (
-                                    <div key={rIdx} className="absolute w-full left-0" style={{top: `${(rIdx+1) * (100/(ladderPaths.length+1))}%`}}>
+                                    <div key={rIdx} className="absolute w-full left-0 px-4" style={{top: `${((rIdx+1) / (ladderPaths.length + 1)) * 100}%`}}>
                                         {row.map((hasBridge, cIdx) => hasBridge && (
                                             <div 
                                                 key={cIdx} 
-                                                className="absolute h-0.5 bg-stone-300" 
+                                                className="absolute h-1 bg-stone-200 rounded-full" 
                                                 style={{
-                                                    left: `${(cIdx / (candidates.length-1)) * 100 + 2}%`, // + offset for padding
-                                                    width: `${(1 / (candidates.length-1)) * 100 - 4}%`
+                                                    left: `${(cIdx / (candidates.length-1)) * 100}%`,
+                                                    width: `${(1 / (candidates.length-1)) * 100}%`
                                                 }}
                                             ></div>
                                         ))}
                                     </div>
                                 ))}
+
+                                {/* Active Path Drawing (SVG Overlay) */}
+                                {selectedLadderStart !== null && (
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none px-4" style={{overflow: 'visible'}}>
+                                        <polyline 
+                                            points={
+                                                // Start point
+                                                `${(selectedLadderStart / (candidates.length-1)) * 100}% 0, ` +
+                                                // Calculate points based on activePath history
+                                                ladderActivePath.map(p => {
+                                                    const x = (p.lane / (candidates.length-1)) * 100;
+                                                    // Map depth to percentage. depth goes 0 to steps.
+                                                    // Using linear interpolation for simplicity in visualization
+                                                    const y = ((p.depth) / (ladderPaths.length + 1)) * 100; 
+                                                    return `${x}% ${y}%`;
+                                                }).join(', ')
+                                            }
+                                            fill="none"
+                                            stroke="#f97316"
+                                            strokeWidth="4"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="drop-shadow-sm transition-all duration-300"
+                                        />
+                                        {/* Current Head Marker */}
+                                        {ladderActivePath.length > 0 && (() => {
+                                            const last = ladderActivePath[ladderActivePath.length - 1];
+                                            const x = (last.lane / (candidates.length-1)) * 100;
+                                            const y = ((last.depth) / (ladderPaths.length + 1)) * 100;
+                                            return (
+                                                <circle cx={`${x}%`} cy={`${y}%`} r="6" fill="#ef4444" className="animate-pulse"/>
+                                            );
+                                        })()}
+                                    </svg>
+                                )}
                             </div>
-                            <div className="flex justify-between mt-2 overflow-hidden">
+
+                            {/* Bottom Labels (Results) */}
+                            <div className="flex justify-between mt-2 overflow-hidden border-t border-stone-100 pt-2">
                                 {candidates.map((c, i) => (
-                                    <div key={i} className={`w-6 text-[10px] text-center truncate ${ladderResultIndex === i ? 'text-red-500 font-bold' : 'text-stone-400'}`}>{c.name.substring(0,2)}</div>
+                                    <div key={i} className={`w-8 text-[10px] text-center truncate leading-tight ${ladderResultIndex === i ? 'text-red-600 font-black scale-110' : 'text-stone-400'}`}>
+                                        {c.name.substring(0,4)}
+                                    </div>
                                 ))}
                             </div>
                             
-                            {!result && !isSpinning && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
-                                    <button onClick={startLadder} className="px-6 py-3 bg-stone-800 text-white rounded-xl font-bold shadow-lg">開始爬梯子</button>
-                                </div>
-                            )}
-                            
-                            {isSpinning && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                                    <div className="bg-white px-4 py-2 rounded-lg shadow font-bold text-stone-600 animate-pulse">計算路徑中...</div>
+                            {!isSpinning && !result && !selectedLadderStart && (
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/80 px-4 py-2 rounded-xl text-xs font-bold text-stone-500 shadow-sm border border-stone-100">
+                                    請點擊上方數字選擇起點
                                 </div>
                             )}
                         </div>
@@ -409,7 +516,8 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                 <div className="text-4xl mb-2">🎉</div>
                                 <div className="text-xs font-bold text-stone-400 mb-1">命運的選擇是</div>
                                 <div className="text-xl font-black text-stone-800 mb-4">{result.name}</div>
-                                <button onClick={() => setResult(null)} className="text-sm text-stone-500 hover:text-stone-800 underline">再玩一次</button>
+                                <div className="bg-stone-50 p-2 rounded-lg text-xs text-stone-500 mb-4">{result.address}</div>
+                                <button onClick={() => {setResult(null); if(mode==='ladder'){setLadderActivePath([]); setSelectedLadderStart(null);}}} className="text-sm font-bold text-orange-500 hover:text-orange-600 underline">再玩一次</button>
                             </div>
                         </div>
                     )}
@@ -638,6 +746,9 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("全部");
   
+  // Custom categories state for Social View
+  const [customCategories, setCustomCategories] = useState([]);
+  
   // New States for Decision Maker
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedForDecision, setSelectedForDecision] = useState([]);
@@ -681,8 +792,8 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
 
   const copyInviteLink = () => { if (!room) return; const url = `${window.location.origin}${window.location.pathname}?room=${room.code}`; if (navigator.share) navigator.share({ title: '加入美食團', text: `加入代碼：${room.code}`, url }).catch(console.error); else { navigator.clipboard.writeText(url); alert("連結已複製！"); } };
 
+  const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type), ...customCategories])];
   const filteredSharedList = selectedCategory === '全部' ? sharedRestaurants : sharedRestaurants.filter(r => r.type === selectedCategory);
-  const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type)])];
 
   // Logic for selecting restaurants for random picker
   const toggleSelection = (id) => {
@@ -699,6 +810,14 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
           return;
       }
       setShowDecisionModal(true);
+  };
+
+  const handleAddCategory = () => {
+      const newCat = prompt("請輸入新的分類名稱：");
+      if (newCat && newCat.trim() && !availableCategories.includes(newCat.trim())) {
+          setCustomCategories(prev => [...prev, newCat.trim()]);
+          setSelectedCategory(newCat.trim()); // Switch to new category
+      }
   };
 
   return (
@@ -769,7 +888,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
           ) : (
               <div className="p-4 space-y-4 pb-32">
                   <div className="sticky top-0 bg-stone-50 z-10 pb-2 space-y-2">
-                     <CategoryTabs categories={availableCategories} selected={selectedCategory} onSelect={setSelectedCategory} />
+                     <CategoryTabs categories={availableCategories} selected={selectedCategory} onSelect={setSelectedCategory} onAddCategory={handleAddCategory} />
                      <div className="flex gap-2">
                          <button onClick={() => setSelectionMode(!selectionMode)} className={`flex-1 py-2 rounded-xl font-bold text-xs border ${selectionMode ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200'}`}>
                              {selectionMode ? '取消挑選' : '開啟挑選模式 (轉盤/爬梯子)'}
@@ -991,7 +1110,144 @@ const NavBar = ({ activeTab, setActiveTab }) => {
   );
 };
 
-// ... SearchPanelComponent & SearchResultsComponent remain mostly unchanged ...
+// Modified ShortlistScreenComponent: Edit Category + Share to Room
+const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAnalysis, handleAiGroupAnalysis, isAiAnalyzing, setShowDetail, handleSystemShare, toggleShortlist, updateShortlistCategory, myRooms, addRestaurantToRoom }) => {
+    const [selectedCategory, setSelectedCategory] = useState('全部');
+    const [sharingItem, setSharingItem] = useState(null); // Track which item is being shared to show room selector
+    const [customCategories, setCustomCategories] = useState([]);
+
+    const categories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...shortlist.map(r => r.customCategory || r.type), ...customCategories])];
+    const filteredList = selectedCategory === '全部' ? shortlist : shortlist.filter(r => (r.customCategory || r.type) === selectedCategory);
+
+    const handleEditCategory = (e, item) => {
+        e.stopPropagation();
+        const newCat = prompt("修改分類名稱:", item.customCategory || item.type);
+        if (newCat && newCat.trim()) {
+            updateShortlistCategory(item.id, newCat.trim());
+        }
+    };
+
+    const handleShareClick = (e, item) => {
+        e.stopPropagation();
+        setSharingItem(item);
+    };
+
+    const handleAddCategory = () => {
+        const newCat = prompt("請輸入新的分類名稱：");
+        if (newCat && newCat.trim() && !categories.includes(newCat.trim())) {
+            setCustomCategories(prev => [...prev, newCat.trim()]);
+            setSelectedCategory(newCat.trim());
+        }
+    };
+
+    return (
+        <div className="p-4 pb-24 h-full flex flex-col font-rounded bg-stone-50 relative">
+            
+            {/* Share to Room Modal */}
+            {sharingItem && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+                        <div className="p-4 border-b border-stone-100 flex justify-between items-center bg-stone-50">
+                            <h3 className="font-bold text-stone-800">分享至房間</h3>
+                            <button onClick={() => setSharingItem(null)} className="p-1 hover:bg-stone-200 rounded-full"><X size={20}/></button>
+                        </div>
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            <p className="text-xs text-stone-500 mb-3 font-bold">選擇要分享「{sharingItem.name}」的房間：</p>
+                            {myRooms.length > 0 ? (
+                                <div className="space-y-2">
+                                    {myRooms.map(room => (
+                                        <button 
+                                            key={room.id}
+                                            onClick={() => {
+                                                addRestaurantToRoom(room.id, sharingItem);
+                                                setSharingItem(null);
+                                            }}
+                                            className="w-full flex justify-between items-center p-3 bg-stone-50 border border-stone-200 rounded-xl hover:border-orange-400 hover:bg-orange-50 transition-all text-left"
+                                        >
+                                            <div>
+                                                <div className="font-bold text-stone-800 text-sm">{room.name}</div>
+                                                <div className="text-[10px] text-stone-400">#{room.code}</div>
+                                            </div>
+                                            <ArrowRight size={16} className="text-stone-300"/>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center text-stone-400 py-4 text-sm">你還沒有加入任何房間喔！</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex items-center justify-between mb-4 px-2 pt-2">
+                <h1 className="text-2xl font-black text-stone-800">候選清單</h1>
+                <span className="text-xs font-bold bg-white px-3 py-1 rounded-full text-stone-400 shadow-sm border border-stone-200">{shortlist.length} 間</span>
+            </div>
+            
+            {shortlist.length > 0 && (
+                 <div className="mb-4 sticky top-0 bg-stone-50 z-10 pb-2">
+                    <CategoryTabs categories={categories} selected={selectedCategory} onSelect={setSelectedCategory} onAddCategory={handleAddCategory} />
+                 </div>
+            )}
+
+            {shortlist.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-stone-300 gap-6">
+                    <div className="w-24 h-24 bg-stone-100 rounded-full flex items-center justify-center"><Heart size={48} strokeWidth={1.5} /></div>
+                    <p className="text-sm font-bold">還沒有加入任何餐廳喔！</p>
+                    <button onClick={() => setActiveTab('home')} className="px-8 py-3 bg-stone-900 text-white rounded-2xl text-sm font-bold shadow-lg hover:scale-105 transition-transform">去逛逛</button>
+                </div>
+            ) : (
+                <div className="flex-1 overflow-y-auto space-y-4">
+                    <div className="bg-gradient-to-br from-orange-400 to-red-500 rounded-[2rem] p-6 text-white shadow-lg shadow-orange-200 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+                        <h3 className="font-bold flex items-center gap-2 mb-3 text-lg"><Sparkles size={20} className="text-yellow-300"/> AI 幫你選</h3>
+                        {aiAnalysis ? (
+                            <div className="text-sm bg-white/10 p-4 rounded-xl backdrop-blur-md leading-relaxed animate-in fade-in border border-white/10">
+                                {aiAnalysis}
+                                <button onClick={() => setAiAnalysis("")} className="block w-full text-center text-xs mt-3 text-white/50 hover:text-white transition-colors border-t border-white/10 pt-2">清除重來</button>
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-xs text-orange-100 mb-4 opacity-90">猶豫不決嗎？讓 AI 毒舌評論家幫你分析這 {shortlist.length} 家餐廳！</p>
+                                <button onClick={handleAiGroupAnalysis} disabled={isAiAnalyzing} className="w-full py-3 bg-white text-orange-600 rounded-xl font-bold text-sm hover:bg-orange-50 transition-colors shadow-sm">{isAiAnalyzing ? "正在思考中..." : "✨ 幫我分析"}</button>
+                            </div>
+                        )}
+                    </div>
+                    <div className="space-y-3 pb-8">
+                        {filteredList.map(r => (
+                            <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-stone-200 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center font-bold text-stone-400 overflow-hidden shadow-inner">
+                                        {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-stone-800 text-sm truncate max-w-[140px]">{r.name}</h4>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <button onClick={(e) => handleEditCategory(e, r)} className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-stone-200 transition-colors">
+                                               {r.customCategory || r.type} <Edit2 size={10} className="opacity-50"/>
+                                            </button>
+                                            <div className="text-[10px] text-stone-400 flex gap-1 font-bold">
+                                                <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
+                                                <span>{r.distance}km</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={(e) => handleShareClick(e, r)} className="p-2.5 text-blue-500 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"><Share2 size={18} /></button>
+                                    <button onClick={(e) => toggleShortlist(e, r)} className="p-2.5 text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"><X size={18}/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ... App Component remain mostly unchanged ...
 // ... I will skip detailed repetition of these two for brevity unless changes were requested ...
 const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, realLocation, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, executeSearch, loading, sortBy, setSortBy }) => (
   <div className="p-6 space-y-8 font-rounded bg-gradient-to-b from-stone-50 to-white min-h-full pb-32">
@@ -1127,134 +1383,6 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                             </div>
                         </div>
                     ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Modified ShortlistScreenComponent: Edit Category + Share to Room
-const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAnalysis, handleAiGroupAnalysis, isAiAnalyzing, setShowDetail, handleSystemShare, toggleShortlist, updateShortlistCategory, myRooms, addRestaurantToRoom }) => {
-    const [selectedCategory, setSelectedCategory] = useState('全部');
-    const [sharingItem, setSharingItem] = useState(null); // Track which item is being shared to show room selector
-
-    const categories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...shortlist.map(r => r.customCategory || r.type)])];
-    const filteredList = selectedCategory === '全部' ? shortlist : shortlist.filter(r => (r.customCategory || r.type) === selectedCategory);
-
-    const handleEditCategory = (e, item) => {
-        e.stopPropagation();
-        const newCat = prompt("修改分類名稱:", item.customCategory || item.type);
-        if (newCat && newCat.trim()) {
-            updateShortlistCategory(item.id, newCat.trim());
-        }
-    };
-
-    const handleShareClick = (e, item) => {
-        e.stopPropagation();
-        setSharingItem(item);
-    };
-
-    return (
-        <div className="p-4 pb-24 h-full flex flex-col font-rounded bg-stone-50 relative">
-            
-            {/* Share to Room Modal */}
-            {sharingItem && (
-                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
-                        <div className="p-4 border-b border-stone-100 flex justify-between items-center bg-stone-50">
-                            <h3 className="font-bold text-stone-800">分享至房間</h3>
-                            <button onClick={() => setSharingItem(null)} className="p-1 hover:bg-stone-200 rounded-full"><X size={20}/></button>
-                        </div>
-                        <div className="p-4 max-h-[60vh] overflow-y-auto">
-                            <p className="text-xs text-stone-500 mb-3 font-bold">選擇要分享「{sharingItem.name}」的房間：</p>
-                            {myRooms.length > 0 ? (
-                                <div className="space-y-2">
-                                    {myRooms.map(room => (
-                                        <button 
-                                            key={room.id}
-                                            onClick={() => {
-                                                addRestaurantToRoom(room.id, sharingItem);
-                                                setSharingItem(null);
-                                            }}
-                                            className="w-full flex justify-between items-center p-3 bg-stone-50 border border-stone-200 rounded-xl hover:border-orange-400 hover:bg-orange-50 transition-all text-left"
-                                        >
-                                            <div>
-                                                <div className="font-bold text-stone-800 text-sm">{room.name}</div>
-                                                <div className="text-[10px] text-stone-400">#{room.code}</div>
-                                            </div>
-                                            <ArrowRight size={16} className="text-stone-300"/>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center text-stone-400 py-4 text-sm">你還沒有加入任何房間喔！</div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex items-center justify-between mb-4 px-2 pt-2">
-                <h1 className="text-2xl font-black text-stone-800">候選清單</h1>
-                <span className="text-xs font-bold bg-white px-3 py-1 rounded-full text-stone-400 shadow-sm border border-stone-200">{shortlist.length} 間</span>
-            </div>
-            
-            {shortlist.length > 0 && (
-                 <div className="mb-4 sticky top-0 bg-stone-50 z-10 pb-2">
-                    <CategoryTabs categories={categories} selected={selectedCategory} onSelect={setSelectedCategory} />
-                 </div>
-            )}
-
-            {shortlist.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-stone-300 gap-6">
-                    <div className="w-24 h-24 bg-stone-100 rounded-full flex items-center justify-center"><Heart size={48} strokeWidth={1.5} /></div>
-                    <p className="text-sm font-bold">還沒有加入任何餐廳喔！</p>
-                    <button onClick={() => setActiveTab('home')} className="px-8 py-3 bg-stone-900 text-white rounded-2xl text-sm font-bold shadow-lg hover:scale-105 transition-transform">去逛逛</button>
-                </div>
-            ) : (
-                <div className="flex-1 overflow-y-auto space-y-4">
-                    <div className="bg-gradient-to-br from-orange-400 to-red-500 rounded-[2rem] p-6 text-white shadow-lg shadow-orange-200 relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                        <h3 className="font-bold flex items-center gap-2 mb-3 text-lg"><Sparkles size={20} className="text-yellow-300"/> AI 幫你選</h3>
-                        {aiAnalysis ? (
-                            <div className="text-sm bg-white/10 p-4 rounded-xl backdrop-blur-md leading-relaxed animate-in fade-in border border-white/10">
-                                {aiAnalysis}
-                                <button onClick={() => setAiAnalysis("")} className="block w-full text-center text-xs mt-3 text-white/50 hover:text-white transition-colors border-t border-white/10 pt-2">清除重來</button>
-                            </div>
-                        ) : (
-                            <div>
-                                <p className="text-xs text-orange-100 mb-4 opacity-90">猶豫不決嗎？讓 AI 毒舌評論家幫你分析這 {shortlist.length} 家餐廳！</p>
-                                <button onClick={handleAiGroupAnalysis} disabled={isAiAnalyzing} className="w-full py-3 bg-white text-orange-600 rounded-xl font-bold text-sm hover:bg-orange-50 transition-colors shadow-sm">{isAiAnalyzing ? "正在思考中..." : "✨ 幫我分析"}</button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="space-y-3 pb-8">
-                        {filteredList.map(r => (
-                            <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-stone-200 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center font-bold text-stone-400 overflow-hidden shadow-inner">
-                                        {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-stone-800 text-sm truncate max-w-[140px]">{r.name}</h4>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <button onClick={(e) => handleEditCategory(e, r)} className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-stone-200 transition-colors">
-                                               {r.customCategory || r.type} <Edit2 size={10} className="opacity-50"/>
-                                            </button>
-                                            <div className="text-[10px] text-stone-400 flex gap-1 font-bold">
-                                                <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
-                                                <span>{r.distance}km</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={(e) => handleShareClick(e, r)} className="p-2.5 text-blue-500 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"><Share2 size={18} /></button>
-                                    <button onClick={(e) => toggleShortlist(e, r)} className="p-2.5 text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"><X size={18}/></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
                 </div>
             )}
         </div>
