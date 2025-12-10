@@ -19,7 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";          
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -237,10 +237,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
         setTimeout(() => {
             // Calculate winner
-            // Rotation aligns 0 degrees at top.
-            // Slice 0 is at 0 degrees initially.
-            // We rotate the wheel clockwise.
-            // The slice that lands at 0 degrees (top pointer) is the one that was at (360 - (totalRotation % 360)) originally.
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
@@ -312,7 +308,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             const bridges = ladderPaths[currentStep];
             let nextLane = currentLane;
             
-            // Logic: Move down to currentStep (already done implicitly), check for bridge
             // Check Left Bridge
             if(currentLane > 0 && bridges[currentLane-1]) {
                 nextLane = currentLane - 1;
@@ -323,8 +318,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             }
 
             // Record movement
-            // First point: current location
-            // If horizontal move, add intermediate point
             if(nextLane !== currentLane) {
                 pathHistory.push({lane: nextLane, step: currentStep + 1, type: 'cross'});
             } else {
@@ -342,8 +335,8 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
     const renderWheelSlice = (index, total) => {
         const angle = 360 / total;
         const rotation = index * angle;
-        // SVG Path for a slice: Move to center, Line to edge, Arc to next point, Close
-        const x1 = 50 + 50 * Math.cos(Math.PI * (rotation - 90) / 180); // -90 to start at top
+        // SVG Path for a slice
+        const x1 = 50 + 50 * Math.cos(Math.PI * (rotation - 90) / 180);
         const y1 = 50 + 50 * Math.sin(Math.PI * (rotation - 90) / 180);
         const x2 = 50 + 50 * Math.cos(Math.PI * (rotation + angle - 90) / 180);
         const y2 = 50 + 50 * Math.sin(Math.PI * (rotation + angle - 90) / 180);
@@ -351,10 +344,8 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         
         const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArc} 1 ${x2} ${y2} Z`;
         
-        // Text position: mid-angle, radius ~ 70%
+        // Text position
         const midAngle = rotation + angle / 2;
-        // We rotate text to be readable (or radial)
-        // Let's place it using transform on a group
         
         return (
             <g key={index}>
@@ -367,7 +358,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                         fontWeight="bold" 
                         fill="#333" 
                         textAnchor="middle" 
-                        transform="rotate(90, 50, 50)" // Text runs radially out
+                        transform="rotate(90, 50, 50)" 
                         style={{pointerEvents: 'none'}}
                      >
                         {candidates[index].name.length > 6 ? candidates[index].name.substring(0,6)+'..' : candidates[index].name}
@@ -381,7 +372,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
                 <div className="p-4 bg-stone-900 text-white flex justify-between items-center">
-                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> Let God Decide</h3>
+                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> Let God Decide </h3>
                     <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full"><X size={20}/></button>
                 </div>
                 
@@ -395,15 +386,16 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                     {/* --- WHEEL MODE --- */}
                     {mode === 'wheel' && (
                         <div className="relative w-64 h-64">
-                            <div className="w-full h-full rounded-full shadow-xl overflow-hidden border-4 border-white">
-                                <svg 
-                                    viewBox="0 0 100 100" 
-                                    className="w-full h-full" 
-                                    style={{
-                                        transform: `rotate(${wheelRotation}deg)`,
-                                        transition: isSpinning ? 'transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none'
-                                    }}
-                                >
+                            {/* Wheel */}
+                            <div 
+                                ref={canvasRef}
+                                className="w-full h-full rounded-full shadow-xl overflow-hidden border-4 border-white"
+                                style={{
+                                    transform: `rotate(${wheelRotation}deg)`,
+                                    transition: isSpinning ? 'transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none'
+                                }}
+                            >
+                                <svg viewBox="0 0 100 100" className="w-full h-full">
                                     {candidates.map((_, i) => renderWheelSlice(i, candidates.length))}
                                 </svg>
                             </div>
@@ -739,6 +731,285 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
         </div>
     );
 };
+
+// SocialView Component: Added Random Selector Logic
+const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
+  const [msgInput, setMsgInput] = useState("");
+  const [subTab, setSubTab] = useState("chat"); 
+  const messagesEndRef = useRef(null);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("全部");
+  
+  // Custom categories state for Social View
+  const [customCategories, setCustomCategories] = useState([]);
+  
+  // New States for Decision Maker
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedForDecision, setSelectedForDecision] = useState([]);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
+
+  const getAvatarUrl = () => { if (userProfile.customAvatar) return userProfile.customAvatar; const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`; };
+
+  useEffect(() => { if(subTab === 'chat' && messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, subTab]);
+
+  const handleRenameRoom = async () => {
+      const newName = prompt("請輸入新的房間名稱：", room.name);
+      if (newName && newName.trim() && db) {
+          try { await updateDoc(doc(db, "rooms", room.id), { name: newName.trim() }); setRoom(prev => ({ ...prev, name: newName.trim() })); } catch (e) { alert("改名失敗"); }
+      }
+  };
+
+  const handleAddRestaurantFromSearch = async (restaurantData) => { await addToSharedList(restaurantData); setShowSearchModal(false); };
+
+  const handleEditCategory = async (itemId, currentCat) => {
+      const newCat = prompt("請輸入新的分類名稱：", currentCat);
+      if (newCat && newCat.trim() && db) {
+          try {
+              const ref = doc(db, "rooms", room.id, "shared_restaurants", itemId);
+              await updateDoc(ref, { type: newCat.trim() });
+          } catch(e) { console.error(e); }
+      }
+  };
+
+  const sendMessage = async (text) => {
+      if (!text.trim()) return;
+      const msgData = { sender: userProfile.name, avatar: getAvatarUrl(), text: text, type: 'text', createdAt: new Date() };
+      if (db && room) await addDoc(collection(db, "rooms", room.id, "messages"), msgData); else setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
+  };
+
+  const voteForMessage = async (msgId, currentVoters, currentVotes) => {
+      if (currentVoters && currentVoters.includes(userProfile.name)) return;
+      if (db && room) { const msgRef = doc(db, "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votes: (currentVotes || 0) + 1, voters: arrayUnion(userProfile.name) }); }
+  };
+
+  const enableVoting = async (msgId) => { if (db && room) { const msgRef = doc(db, "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votingEnabled: true }); } };
+
+  const copyInviteLink = () => { if (!room) return; const url = `${window.location.origin}${window.location.pathname}?room=${room.code}`; if (navigator.share) navigator.share({ title: '加入美食團', text: `加入代碼：${room.code}`, url }).catch(console.error); else { navigator.clipboard.writeText(url); alert("連結已複製！"); } };
+
+  const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type), ...customCategories])];
+  const filteredSharedList = selectedCategory === '全部' ? sharedRestaurants : sharedRestaurants.filter(r => r.type === selectedCategory);
+
+  // Logic for selecting restaurants for random picker
+  const toggleSelection = (id) => {
+      if (selectedForDecision.includes(id)) {
+          setSelectedForDecision(selectedForDecision.filter(itemId => itemId !== id));
+      } else {
+          setSelectedForDecision([...selectedForDecision, id]);
+      }
+  };
+
+  const startDecision = () => {
+      if (selectedForDecision.length < 2) {
+          alert("請至少選擇 2 間餐廳來進行抽籤！");
+          return;
+      }
+      setShowDecisionModal(true);
+  };
+
+  const handleAddCategory = () => {
+      const newCat = prompt("請輸入新的分類名稱：");
+      if (newCat && newCat.trim() && !availableCategories.includes(newCat.trim())) {
+          setCustomCategories(prev => [...prev, newCat.trim()]);
+          setSelectedCategory(newCat.trim()); // Switch to new category
+      }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-stone-50 relative">
+       {/* Decision Modal */}
+       {showDecisionModal && (
+           <DecisionMakerModal 
+               candidates={sharedRestaurants.filter(r => selectedForDecision.includes(r.id))} 
+               onClose={() => setShowDecisionModal(false)}
+           />
+       )}
+
+       <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-stone-200">
+          <div className="flex items-center gap-2">
+            <button onClick={onBack} className="p-2 -ml-2 text-stone-500 hover:bg-stone-100 rounded-full"><ChevronLeft size={24}/></button>
+            <div>
+                <h3 className="font-bold text-stone-800 flex items-center gap-2 text-lg">
+                  {room.name}
+                  <button onClick={handleRenameRoom} className="p-1 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-100"><Edit2 size={16}/></button>
+                </h3>
+                <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-extrabold">#{room.code}</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+             <button onClick={copyInviteLink} className="p-2 text-teal-600 bg-teal-50 rounded-full hover:bg-teal-100 transition-colors"><LinkIcon size={20} /></button>
+             <button onClick={() => setRoom(null)} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full transition-colors"><LogOut size={20} /></button>
+          </div>
+       </div>
+
+       <div className="flex bg-white border-b border-stone-200 shrink-0">
+          <button onClick={() => setSubTab('chat')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'chat' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}><MessageCircle size={16}/> 聊天室</button>
+          <button onClick={() => setSubTab('list')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'list' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}><List size={16}/> 共同清單</button>
+       </div>
+       
+       <div className="flex-1 overflow-y-auto relative scroll-smooth">
+          {subTab === 'chat' ? (
+              <div className="p-4 space-y-6 pb-24">
+                  {messages.map((msg) => {
+                      if (msg.type === 'system') return <div key={msg.id} className="text-center text-xs text-stone-400 my-4"><span className="bg-stone-200/50 px-3 py-1 rounded-full">{msg.text}</span></div>
+                      const isMe = msg.sender === userProfile.name;
+                      return (
+                          <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group`}>
+                              {!isMe && <div className="w-8 h-8 rounded-full bg-stone-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm mt-1"><img src={msg.avatar} className="w-full h-full object-cover" /></div>}
+                              <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                  <span className="text-[10px] text-stone-400 mb-1 px-1">{msg.sender}</span>
+                                  {msg.type === 'text' ? (
+                                      <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-tr-sm' : 'bg-white text-stone-800 border border-stone-200 rounded-tl-sm'}`}>{msg.text}</div>
+                                  ) : (
+                                      <div onClick={() => setShowDetail(msg.restaurant)} className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-orange-100' : 'border-stone-200'} shadow-sm w-60 overflow-hidden cursor-pointer`}>
+                                          <div className="w-full h-32 bg-stone-100 rounded-xl mb-3 overflow-hidden relative">
+                                              {msg.restaurant.photoUrl ? <img src={msg.restaurant.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl text-stone-300 font-bold bg-stone-50">{msg.restaurant.name.charAt(0)}</div>}
+                                          </div>
+                                          <h4 className="font-bold text-stone-800 truncate text-lg mb-0.5">{msg.restaurant.name}</h4>
+                                          {msg.votingEnabled ? (
+                                              <button onClick={(e) => { e.stopPropagation(); voteForMessage(msg.id, msg.voters, msg.votes); }} className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all mt-2 ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white' : 'bg-stone-50 text-stone-600'}`}><ThumbsUp size={14}/> {msg.votes > 0 ? `${msg.votes} 人想吃` : '投一票'}</button>
+                                          ) : (
+                                              <button onClick={(e) => { e.stopPropagation(); enableVoting(msg.id); }} className="w-full py-2.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-orange-100 mt-2"><Vote size={14} /> 發起投票</button>
+                                          )}
+                                          <button onClick={(e) => { e.stopPropagation(); addToSharedList(msg.restaurant); }} className="w-full mt-2 py-2 text-xs text-stone-400 hover:text-stone-600 border-t border-stone-100 flex items-center justify-center gap-1"><List size={12}/> 加入共同清單</button>
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      )
+                  })}
+                  <div ref={messagesEndRef} />
+              </div>
+          ) : (
+              <div className="p-4 space-y-4 pb-32">
+                  <div className="sticky top-0 bg-stone-50 z-10 pb-2 space-y-2">
+                     <CategoryTabs categories={availableCategories} selected={selectedCategory} onSelect={setSelectedCategory} onAddCategory={handleAddCategory} />
+                     <div className="flex gap-2">
+                         <button onClick={() => setSelectionMode(!selectionMode)} className={`flex-1 py-2 rounded-xl font-bold text-xs border ${selectionMode ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200'}`}>
+                             {selectionMode ? '取消挑選' : '開啟挑選模式 (轉盤/爬梯子)'}
+                         </button>
+                         {selectionMode && (
+                             <button onClick={startDecision} className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl text-xs shadow-md animate-bounce">
+                                 開始決定 ({selectedForDecision.length})
+                             </button>
+                         )}
+                     </div>
+                  </div>
+                  
+                  {!selectionMode && (
+                      <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-stone-300 rounded-xl text-stone-400 font-bold flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-500 transition-colors"><Plus size={20}/> 新增餐廳到清單</button>
+                  )}
+
+                  {filteredSharedList.map(item => (
+                      <div key={item.id} className={`bg-white p-4 rounded-2xl border shadow-sm space-y-3 relative group transition-all ${selectionMode && selectedForDecision.includes(item.id) ? 'border-orange-500 ring-2 ring-orange-100' : 'border-stone-100'}`}>
+                          
+                          {selectionMode && (
+                              <div className="absolute top-4 right-4 z-20">
+                                  <div onClick={() => toggleSelection(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer ${selectedForDecision.includes(item.id) ? 'bg-orange-500 border-orange-500 text-white' : 'border-stone-300 bg-white'}`}>
+                                      {selectedForDecision.includes(item.id) && <Check size={14} strokeWidth={4} />}
+                                  </div>
+                              </div>
+                          )}
+
+                          <div className="flex justify-between items-start cursor-pointer" onClick={() => !selectionMode && setShowDetail(item)}>
+                              <div className="flex gap-3">
+                                  <div className="w-12 h-12 bg-stone-100 rounded-lg overflow-hidden flex-shrink-0">{item.photoUrl ? <img src={item.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center font-bold text-stone-300">{item.name.charAt(0)}</div>}</div>
+                                  <div>
+                                      <h4 className="font-bold text-stone-800 text-lg flex items-center gap-1">{item.name}<ArrowRight size={14} className="text-stone-300"/></h4>
+                                      <div className="flex items-center gap-2 mt-1">
+                                          <button onClick={(e) => { e.stopPropagation(); handleEditCategory(item.id, item.type); }} className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded flex items-center gap-0.5 hover:bg-orange-100"><Tag size={10}/> {item.type} <Edit2 size={8}/></button>
+                                          <p className="text-xs text-stone-400">新增: {item.addedBy}</p>
+                                      </div>
+                                  </div>
+                              </div>
+                              {!selectionMode && <button onClick={(e) => { e.stopPropagation(); removeFromSharedList(item); }} className="text-stone-300 hover:text-red-400 p-2"><Trash2 size={16}/></button>}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                              <div className="bg-stone-50 p-2 rounded-xl"><span className="text-[10px] font-bold text-stone-400 block mb-1">我的狀態</span><div className="flex gap-1"><button onClick={() => updateSharedItemStatus(item.id, 'eaten', true)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-stone-200 text-stone-400'}`}><CheckCircle size={10}/> 吃過</button><button onClick={() => updateSharedItemStatus(item.id, 'eaten', false)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-stone-200 text-stone-400'}`}><Circle size={10}/> 沒吃</button></div></div>
+                              <div className="bg-stone-50 p-2 rounded-xl">
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="text-[10px] font-bold text-stone-400">我的評分</span>
+                                  {item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}
+                                </div>
+                              
+                                <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
+                                    {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
+                                        <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
+                                            <span>{user}</span>
+                                            <span className="flex items-center gap-0.5 text-yellow-500 font-bold"><Star size={8} fill="currentColor"/> {score}</span>
+                                        </div>
+                                    ))}
+                                    {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
+                                </div>
+
+                                <div className="flex justify-center border-t border-stone-200 pt-2">
+                                    <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
+                                </div>
+                              </div>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          )}
+       </div>
+
+       {subTab === 'chat' && (
+           <div className="p-3 bg-white border-t border-stone-200 flex gap-2 items-center shrink-0">
+              <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (sendMessage(msgInput), setMsgInput(""))} className="flex-1 bg-stone-100 rounded-full px-5 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500 transition-shadow" placeholder="輸入訊息..." />
+              <button onClick={() => { sendMessage(msgInput); setMsgInput(""); }} className={`p-3 rounded-full transition-all shadow-md ${msgInput.trim() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-stone-200 text-stone-400'}`} disabled={!msgInput.trim()}><Send size={20} /></button>
+           </div>
+       )}
+
+       {showSearchModal && <RoomRestaurantSearchModal onClose={() => setShowSearchModal(false)} onSelect={handleAddRestaurantFromSearch} virtualLocation={virtualLocation} />}
+    </div>
+  );
+};
+
+const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal, onDeleteRoom }) => {
+    const [joinCodeInput, setJoinCodeInput] = useState("");
+
+    return (
+      <div className="p-6 h-full flex flex-col items-center font-rounded bg-gradient-to-b from-stone-100 to-white overflow-y-auto">
+         <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-6 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105 mt-8">
+             <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
+             <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={24}/></div>
+         </div>
+         <h1 className="text-3xl font-black text-stone-800 mb-2">揪團大廳</h1>
+         <p className="text-stone-400 text-sm mb-8">管理你的所有美食房間</p>
+
+         <div className="w-full max-w-sm space-y-6">
+             {myRooms.length > 0 && (
+                 <div className="space-y-3">
+                     <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">已加入的房間</label>
+                     {myRooms.map(r => (
+                         <div key={r.id} onClick={() => onEnterRoom(r)} className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
+                             <div><h3 className="font-bold text-stone-800">{r.name}</h3><span className="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded font-mono">#{r.code}</span></div>
+                             <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }}
+                                    className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
+                                <ArrowRight size={16} className="text-stone-300 group-hover:text-orange-500"/>
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+             )}
+
+             <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 space-y-4">
+                <button onClick={onCreateRoom} className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"><PlusCircle size={20} /> 建立新房間</button>
+                <div className="relative py-2"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200"></div></div><div className="relative flex justify-center text-xs font-bold text-stone-400 tracking-wider"><span className="px-2 bg-white">或是</span></div></div>
+                <div className="flex gap-2">
+                    <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} placeholder="輸入代碼" className="flex-1 bg-stone-50 border border-stone-200 rounded-2xl px-4 font-bold outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-center" maxLength={4} />
+                    <button onClick={() => onJoinRoom(joinCodeInput)} className="px-6 bg-stone-800 text-white rounded-2xl font-bold shadow-md hover:bg-stone-700 transition-colors">加入</button>
+                </div>
+             </div>
+         </div>
+      </div>
+    );
+};
+// ... DetailModal, NavBar, SearchPanelComponent, SearchResultsComponent, ShortlistScreenComponent ...
 
 const DetailModal = ({ showDetail, ...props }) => {
     if (!showDetail) return null;
