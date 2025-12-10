@@ -359,9 +359,6 @@ const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
 };
 
 const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
-    // ... code identical to previous version, omitting for brevity ...
-    // Since this component uses basic searchByText, it's fine.
-    // The main search panel is where the logic changes.
     const [queryText, setQueryText] = useState("");
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -784,7 +781,7 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
            <div className="relative">
             <select value={priceFilter} onChange={(e) => setPriceFilter(e.target.value)} className="w-full appearance-none bg-white border-2 border-stone-200 text-stone-600 py-3 px-3 rounded-xl text-xs font-bold outline-none focus:border-green-400 transition-colors">
               <option value="all">價格不限</option>
-              <option value="1">$ (平價 - 含未標示)</option>
+              <option value="1">$ (平價)</option>
               <option value="2">$$ (適中)</option>
               <option value="3">$$$ (稍貴)</option>
               <option value="4">$$$$ (高檔)</option>
@@ -1264,10 +1261,9 @@ export default function App() {
                 const targetPrice = parseInt(priceFilter);
                 filtered = filtered.filter(r => {
                     const p = r.priceLevel;
-                    // Legacy API 也回傳 0-4，undefined 視為 0
-                    const effectivePrice = (p === undefined || p === null) ? 0 : p;
-                    if (targetPrice === 1) return effectivePrice <= 1; 
-                    return effectivePrice === targetPrice || effectivePrice === 0;
+                    const effectivePrice = convertPriceLevel(p);
+                    // 嚴格比對：只顯示符合該價格等級的餐廳，不顯示未標示的
+                    return effectivePrice === targetPrice;
                 });
             }
 
