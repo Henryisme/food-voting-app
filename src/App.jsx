@@ -19,7 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";         
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";        
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
