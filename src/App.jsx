@@ -19,7 +19,8 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";        
+
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
@@ -1115,9 +1116,9 @@ export default function App() {
     try {
         const { Place } = await google.maps.importLibrary("places");
         let queryText = "restaurant";
-        if (timeFilter === 'breakfast') queryText = "breakfast";
-        if (timeFilter === 'lunch') queryText = "lunch restaurant";
-        if (timeFilter === 'dinner') queryText = "dinner restaurant";
+        if (timeFilter === 'breakfast') queryText = "breakfast spots"; // 優化關鍵字
+        if (timeFilter === 'lunch') queryText = "lunch restaurants";
+        if (timeFilter === 'dinner') queryText = "dinner restaurants";
 
         const { places } = await Place.searchByText({
             textQuery: queryText,
@@ -1148,23 +1149,30 @@ export default function App() {
                     regularOpeningHours: place.regularOpeningHours 
                 };
             }));
-            let filtered = formatted.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
+            
+            // 移除原本嚴格的距離過濾，改為只濾掉異常遠的結果 (例如 > 20km)
+            // 這樣可以保留最多 API 回傳的結果
+            let filtered = formatted.filter(r => parseFloat(r.distance) <= 50); // 寬鬆過濾: 50km內都顯示
+
             if (ratingFilter !== 'all') filtered = filtered.filter(r => (r.rating || 0) >= parseInt(ratingFilter));
             
-            // 價格篩選邏輯 (使用轉換後的數字)
+            // 價格篩選邏輯 (包含 0/未知的價格)
             if (priceFilter !== 'all') {
                 const targetPrice = parseInt(priceFilter);
                 filtered = filtered.filter(r => {
-                    // 使用 convertPriceLevel 將 API 的字串或 undefined 轉為數字 (0-4)
                     const p = r.priceLevel;
                     const effectivePrice = convertPriceLevel(p);
                     
-                    if (targetPrice === 1) return effectivePrice <= 1; // 平價: 含 0 (未知) & 1
-                    return effectivePrice === targetPrice;
+                    // 關鍵修正：始終包含 effectivePrice === 0 (未知價格)
+                    // 這樣才不會把沒標示價格的餐廳都濾掉
+                    if (targetPrice === 1) return effectivePrice <= 1; // 平價: 含 0 & 1
+                    return effectivePrice === targetPrice || effectivePrice === 0;
                 });
             }
 
-            filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+            // 依照距離排序 (因為移除了嚴格距離過濾，這裡排序很重要)
+            filtered.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+            
             if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
             setRestaurants(filtered);
         } else {
