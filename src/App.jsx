@@ -5,7 +5,7 @@ import {
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
   Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
-  Minimize2, Maximize2, Tag, DollarSign, Check, Filter
+  Minimize2, Maximize2, Tag, DollarSign, Check, Filter, Play, RefreshCw, Grid
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -19,8 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";        
-
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
@@ -207,6 +206,226 @@ const CategoryTabs = ({ categories, selected, onSelect }) => (
   </div>
 );
 
+// --- Decision Maker Modal (New Feature) ---
+const DecisionMakerModal = ({ candidates, onClose }) => {
+    const [mode, setMode] = useState('wheel'); // 'wheel' or 'ladder'
+    const [result, setResult] = useState(null);
+    const [isSpinning, setIsSpinning] = useState(false);
+    const canvasRef = useRef(null);
+    const [ladderPaths, setLadderPaths] = useState([]);
+    const [ladderResultIndex, setLadderResultIndex] = useState(-1);
+
+    // --- Wheel Logic ---
+    const spinWheel = () => {
+        if (isSpinning) return;
+        setIsSpinning(true);
+        setResult(null);
+        
+        // Random duration between 3-5 seconds
+        const duration = 3000 + Math.random() * 2000;
+        // Random final angle
+        const finalAngle = 360 * 5 + Math.random() * 360; 
+        
+        // CSS rotation logic handled by style in render
+        setTimeout(() => {
+            const actualAngle = finalAngle % 360;
+            const sliceSize = 360 / candidates.length;
+            // Calculate index: angle increases clockwise, so 0 is right. CSS rotate starts from top (-90deg offset usually needed or 0 is top).
+            // Let's assume standard CSS rotate: 0 is top.
+            // Items are distributed. The one at top is the winner.
+            // Index at top = (360 - (actualAngle % 360)) / sliceSize
+            const winningIndex = Math.floor(((360 - actualAngle + (sliceSize/2)) % 360) / sliceSize);
+            setResult(candidates[winningIndex % candidates.length]);
+            setIsSpinning(false);
+        }, duration);
+        
+        // We'll use a ref to store the rotation for the DOM element
+        if(canvasRef.current) {
+            canvasRef.current.style.transition = `transform ${duration}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
+            canvasRef.current.style.transform = `rotate(${finalAngle}deg)`;
+        }
+    };
+
+    // --- Ladder Logic ---
+    const startLadder = () => {
+        if(isSpinning) return;
+        setIsSpinning(true);
+        setResult(null);
+        
+        // Generate ladder structure
+        const numCandidates = candidates.length;
+        const steps = 8; // number of vertical segments
+        const bridges = [];
+        
+        // Generate random bridges
+        for(let i=0; i<steps; i++) {
+            const rowBridges = [];
+            for(let j=0; j<numCandidates-1; j++) {
+                // 50% chance to have a bridge, but avoid consecutive horizontal lines
+                if(Math.random() > 0.5 && (j===0 || !rowBridges[j-1])) {
+                    rowBridges[j] = true;
+                } else {
+                    rowBridges[j] = false;
+                }
+            }
+            bridges.push(rowBridges);
+        }
+        
+        setLadderPaths(bridges);
+
+        // Calculate path for a random start point (or we can animate all?)
+        // Let's pick a random start point for the "system" to choose for us
+        const startIdx = Math.floor(Math.random() * numCandidates);
+        
+        // Simulate path
+        let currentLane = startIdx;
+        const pathTrace = [{lane: currentLane, step: -1}]; // Start
+        
+        for(let i=0; i<steps; i++) {
+            // Check left bridge
+            if(currentLane > 0 && bridges[i][currentLane-1]) {
+                currentLane--;
+            } 
+            // Check right bridge
+            else if(currentLane < numCandidates - 1 && bridges[i][currentLane]) {
+                currentLane++;
+            }
+            pathTrace.push({lane: currentLane, step: i});
+        }
+        
+        // Delay to show animation effect (simplified here as just a timeout)
+        setTimeout(() => {
+            setLadderResultIndex(currentLane);
+            setResult(candidates[currentLane]);
+            setIsSpinning(false);
+        }, 2000);
+    };
+
+    return (
+        <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+                <div className="p-4 bg-stone-900 text-white flex justify-between items-center">
+                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> 命運決策台</h3>
+                    <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full"><X size={20}/></button>
+                </div>
+                
+                <div className="flex border-b border-stone-200">
+                    <button onClick={() => {setMode('wheel'); setResult(null);}} className={`flex-1 py-3 font-bold text-sm ${mode==='wheel' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>幸運轉盤</button>
+                    <button onClick={() => {setMode('ladder'); setResult(null);}} className={`flex-1 py-3 font-bold text-sm ${mode==='ladder' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>鬼腳圖 (爬梯子)</button>
+                </div>
+
+                <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-hidden bg-stone-50 relative">
+                    
+                    {mode === 'wheel' && (
+                        <div className="relative w-64 h-64">
+                            {/* Wheel */}
+                            <div 
+                                ref={canvasRef}
+                                className="w-full h-full rounded-full border-4 border-white shadow-xl overflow-hidden relative transition-transform"
+                                style={{
+                                    background: `conic-gradient(${candidates.map((c, i) => 
+                                        `${i % 2 === 0 ? '#fb923c' : '#fed7aa'} ${i * (360/candidates.length)}deg ${(i+1) * (360/candidates.length)}deg`
+                                    ).join(', ')})`
+                                }}
+                            >
+                                {candidates.map((c, i) => (
+                                    <div 
+                                        key={c.id} 
+                                        className="absolute w-full text-center top-0 left-0 h-full flex justify-center pt-2"
+                                        style={{ 
+                                            transform: `rotate(${i * (360/candidates.length) + (360/candidates.length)/2}deg)`,
+                                            transformOrigin: '50% 50%'
+                                        }}
+                                    >
+                                        <span className="text-xs font-bold text-stone-800 w-24 truncate rotate-180 writing-vertical-rl" style={{writingMode: 'vertical-rl'}}>{c.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Pointer */}
+                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-10 z-10 filter drop-shadow-md">
+                                <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[20px] border-t-red-600"></div>
+                            </div>
+                            {/* Center Button */}
+                            <button 
+                                onClick={spinWheel}
+                                disabled={isSpinning}
+                                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center font-black text-stone-800 border-4 border-stone-100 z-20 hover:scale-105 active:scale-95 transition-all disabled:opacity-80"
+                            >
+                                GO
+                            </button>
+                        </div>
+                    )}
+
+                    {mode === 'ladder' && (
+                        <div className="w-full h-64 flex flex-col relative bg-white rounded-xl border border-stone-200 p-2 overflow-hidden">
+                            <div className="flex justify-between mb-2">
+                                {candidates.map((_, i) => (
+                                    <div key={i} className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-xs font-bold text-stone-500">{i+1}</div>
+                                ))}
+                            </div>
+                            <div className="flex-1 relative flex justify-between px-3">
+                                {candidates.map((_, i) => (
+                                    <div key={i} className="w-0.5 h-full bg-stone-300 relative"></div>
+                                ))}
+                                {/* Render random bridges purely for visual effect here - simplistic view */}
+                                {ladderPaths.map((row, rIdx) => (
+                                    <div key={rIdx} className="absolute w-full left-0" style={{top: `${(rIdx+1) * (100/(ladderPaths.length+1))}%`}}>
+                                        {row.map((hasBridge, cIdx) => hasBridge && (
+                                            <div 
+                                                key={cIdx} 
+                                                className="absolute h-0.5 bg-stone-300" 
+                                                style={{
+                                                    left: `${(cIdx / (candidates.length-1)) * 100 + 2}%`, // + offset for padding
+                                                    width: `${(1 / (candidates.length-1)) * 100 - 4}%`
+                                                }}
+                                            ></div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex justify-between mt-2 overflow-hidden">
+                                {candidates.map((c, i) => (
+                                    <div key={i} className={`w-6 text-[10px] text-center truncate ${ladderResultIndex === i ? 'text-red-500 font-bold' : 'text-stone-400'}`}>{c.name.substring(0,2)}</div>
+                                ))}
+                            </div>
+                            
+                            {!result && !isSpinning && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
+                                    <button onClick={startLadder} className="px-6 py-3 bg-stone-800 text-white rounded-xl font-bold shadow-lg">開始爬梯子</button>
+                                </div>
+                            )}
+                            
+                            {isSpinning && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                                    <div className="bg-white px-4 py-2 rounded-lg shadow font-bold text-stone-600 animate-pulse">計算路徑中...</div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {result && !isSpinning && (
+                        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in zoom-in">
+                            <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-3/4 border-4 border-yellow-400 transform rotate-1">
+                                <div className="text-4xl mb-2">🎉</div>
+                                <div className="text-xs font-bold text-stone-400 mb-1">命運的選擇是</div>
+                                <div className="text-xl font-black text-stone-800 mb-4">{result.name}</div>
+                                <button onClick={() => setResult(null)} className="text-sm text-stone-500 hover:text-stone-800 underline">再玩一次</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                
+                <div className="p-3 bg-stone-50 text-center text-xs text-stone-400 border-t border-stone-200">
+                    共有 {candidates.length} 個選擇
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// ... RealMapSelector and other components remain mostly the same ...
+// ... I will skip repeating unchanged small components to focus on the requested changes ...
+
 const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
   const mapRef = useRef(null);
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
@@ -359,6 +578,7 @@ const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
 };
 
 const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
+    // ... code identical to previous version, omitting for brevity ...
     const [queryText, setQueryText] = useState("");
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -410,13 +630,18 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     );
 };
 
-// SocialView Component ... (unchanged)
+// SocialView Component: Added Random Selector Logic
 const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
   const [msgInput, setMsgInput] = useState("");
   const [subTab, setSubTab] = useState("chat"); 
   const messagesEndRef = useRef(null);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("全部");
+  
+  // New States for Decision Maker
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedForDecision, setSelectedForDecision] = useState([]);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
 
   const getAvatarUrl = () => { if (userProfile.customAvatar) return userProfile.customAvatar; const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`; };
 
@@ -459,8 +684,33 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   const filteredSharedList = selectedCategory === '全部' ? sharedRestaurants : sharedRestaurants.filter(r => r.type === selectedCategory);
   const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type)])];
 
+  // Logic for selecting restaurants for random picker
+  const toggleSelection = (id) => {
+      if (selectedForDecision.includes(id)) {
+          setSelectedForDecision(selectedForDecision.filter(itemId => itemId !== id));
+      } else {
+          setSelectedForDecision([...selectedForDecision, id]);
+      }
+  };
+
+  const startDecision = () => {
+      if (selectedForDecision.length < 2) {
+          alert("請至少選擇 2 間餐廳來進行抽籤！");
+          return;
+      }
+      setShowDecisionModal(true);
+  };
+
   return (
-    <div className="flex flex-col h-full bg-stone-50">
+    <div className="flex flex-col h-full bg-stone-50 relative">
+       {/* Decision Modal */}
+       {showDecisionModal && (
+           <DecisionMakerModal 
+               candidates={sharedRestaurants.filter(r => selectedForDecision.includes(r.id))} 
+               onClose={() => setShowDecisionModal(false)}
+           />
+       )}
+
        <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-stone-200">
           <div className="flex items-center gap-2">
             <button onClick={onBack} className="p-2 -ml-2 text-stone-500 hover:bg-stone-100 rounded-full"><ChevronLeft size={24}/></button>
@@ -517,14 +767,37 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                   <div ref={messagesEndRef} />
               </div>
           ) : (
-              <div className="p-4 space-y-4 pb-24">
-                  <div className="sticky top-0 bg-stone-50 z-10 pb-2">
+              <div className="p-4 space-y-4 pb-32">
+                  <div className="sticky top-0 bg-stone-50 z-10 pb-2 space-y-2">
                      <CategoryTabs categories={availableCategories} selected={selectedCategory} onSelect={setSelectedCategory} />
+                     <div className="flex gap-2">
+                         <button onClick={() => setSelectionMode(!selectionMode)} className={`flex-1 py-2 rounded-xl font-bold text-xs border ${selectionMode ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200'}`}>
+                             {selectionMode ? '取消挑選' : '開啟挑選模式 (轉盤/爬梯子)'}
+                         </button>
+                         {selectionMode && (
+                             <button onClick={startDecision} className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl text-xs shadow-md animate-bounce">
+                                 開始決定 ({selectedForDecision.length})
+                             </button>
+                         )}
+                     </div>
                   </div>
-                  <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-stone-300 rounded-xl text-stone-400 font-bold flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-500 transition-colors"><Plus size={20}/> 新增餐廳到清單</button>
+                  
+                  {!selectionMode && (
+                      <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-stone-300 rounded-xl text-stone-400 font-bold flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-500 transition-colors"><Plus size={20}/> 新增餐廳到清單</button>
+                  )}
+
                   {filteredSharedList.map(item => (
-                      <div key={item.id} className="bg-white p-4 rounded-2xl border border-stone-100 shadow-sm space-y-3 relative group">
-                          <div className="flex justify-between items-start cursor-pointer" onClick={() => setShowDetail(item)}>
+                      <div key={item.id} className={`bg-white p-4 rounded-2xl border shadow-sm space-y-3 relative group transition-all ${selectionMode && selectedForDecision.includes(item.id) ? 'border-orange-500 ring-2 ring-orange-100' : 'border-stone-100'}`}>
+                          
+                          {selectionMode && (
+                              <div className="absolute top-4 right-4 z-20">
+                                  <div onClick={() => toggleSelection(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer ${selectedForDecision.includes(item.id) ? 'bg-orange-500 border-orange-500 text-white' : 'border-stone-300 bg-white'}`}>
+                                      {selectedForDecision.includes(item.id) && <Check size={14} strokeWidth={4} />}
+                                  </div>
+                              </div>
+                          )}
+
+                          <div className="flex justify-between items-start cursor-pointer" onClick={() => !selectionMode && setShowDetail(item)}>
                               <div className="flex gap-3">
                                   <div className="w-12 h-12 bg-stone-100 rounded-lg overflow-hidden flex-shrink-0">{item.photoUrl ? <img src={item.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center font-bold text-stone-300">{item.name.charAt(0)}</div>}</div>
                                   <div>
@@ -535,7 +808,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                       </div>
                                   </div>
                               </div>
-                              <button onClick={(e) => { e.stopPropagation(); removeFromSharedList(item); }} className="text-stone-300 hover:text-red-400 p-2"><Trash2 size={16}/></button>
+                              {!selectionMode && <button onClick={(e) => { e.stopPropagation(); removeFromSharedList(item); }} className="text-stone-300 hover:text-red-400 p-2"><Trash2 size={16}/></button>}
                           </div>
                           <div className="grid grid-cols-2 gap-2 mt-2">
                               <div className="bg-stone-50 p-2 rounded-xl"><span className="text-[10px] font-bold text-stone-400 block mb-1">我的狀態</span><div className="flex gap-1"><button onClick={() => updateSharedItemStatus(item.id, 'eaten', true)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-stone-200 text-stone-400'}`}><CheckCircle size={10}/> 吃過</button><button onClick={() => updateSharedItemStatus(item.id, 'eaten', false)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-stone-200 text-stone-400'}`}><Circle size={10}/> 沒吃</button></div></div>
@@ -626,10 +899,7 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
 };
 
 const DetailModal = ({ showDetail, ...props }) => {
-    // ... DetailModal code is unchanged, keeping for context ...
-    // Just ensuring we pass props correctly if we spread them
-    // But since no logic changed inside, I'll keep the previous implementation block structure
-    // Re-pasting the component to ensure file integrity
+    // ... DetailModal code is unchanged ...
     if (!showDetail) return null;
     const r = showDetail;
     const { shortlist, toggleShortlist, room, addToSharedList, removeFromSharedList, handleSystemShare, sharedRestaurants, updateSharedItemStatus, userProfile } = props;
@@ -721,6 +991,8 @@ const NavBar = ({ activeTab, setActiveTab }) => {
   );
 };
 
+// ... SearchPanelComponent & SearchResultsComponent remain mostly unchanged ...
+// ... I will skip detailed repetition of these two for brevity unless changes were requested ...
 const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, realLocation, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, executeSearch, loading, sortBy, setSortBy }) => (
   <div className="p-6 space-y-8 font-rounded bg-gradient-to-b from-stone-50 to-white min-h-full pb-32">
      <style>{`@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap'); .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }`}</style>
@@ -861,15 +1133,67 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
     );
 };
 
-const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAnalysis, handleAiGroupAnalysis, isAiAnalyzing, setShowDetail, handleSystemShare, toggleShortlist }) => {
-    // ... ShortlistScreenComponent remains unchanged ...
-    // Keeping structure for brevity
+// Modified ShortlistScreenComponent: Edit Category + Share to Room
+const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAnalysis, handleAiGroupAnalysis, isAiAnalyzing, setShowDetail, handleSystemShare, toggleShortlist, updateShortlistCategory, myRooms, addRestaurantToRoom }) => {
     const [selectedCategory, setSelectedCategory] = useState('全部');
+    const [sharingItem, setSharingItem] = useState(null); // Track which item is being shared to show room selector
+
     const categories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...shortlist.map(r => r.customCategory || r.type)])];
     const filteredList = selectedCategory === '全部' ? shortlist : shortlist.filter(r => (r.customCategory || r.type) === selectedCategory);
 
+    const handleEditCategory = (e, item) => {
+        e.stopPropagation();
+        const newCat = prompt("修改分類名稱:", item.customCategory || item.type);
+        if (newCat && newCat.trim()) {
+            updateShortlistCategory(item.id, newCat.trim());
+        }
+    };
+
+    const handleShareClick = (e, item) => {
+        e.stopPropagation();
+        setSharingItem(item);
+    };
+
     return (
-        <div className="p-4 pb-24 h-full flex flex-col font-rounded bg-stone-50">
+        <div className="p-4 pb-24 h-full flex flex-col font-rounded bg-stone-50 relative">
+            
+            {/* Share to Room Modal */}
+            {sharingItem && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+                        <div className="p-4 border-b border-stone-100 flex justify-between items-center bg-stone-50">
+                            <h3 className="font-bold text-stone-800">分享至房間</h3>
+                            <button onClick={() => setSharingItem(null)} className="p-1 hover:bg-stone-200 rounded-full"><X size={20}/></button>
+                        </div>
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            <p className="text-xs text-stone-500 mb-3 font-bold">選擇要分享「{sharingItem.name}」的房間：</p>
+                            {myRooms.length > 0 ? (
+                                <div className="space-y-2">
+                                    {myRooms.map(room => (
+                                        <button 
+                                            key={room.id}
+                                            onClick={() => {
+                                                addRestaurantToRoom(room.id, sharingItem);
+                                                setSharingItem(null);
+                                            }}
+                                            className="w-full flex justify-between items-center p-3 bg-stone-50 border border-stone-200 rounded-xl hover:border-orange-400 hover:bg-orange-50 transition-all text-left"
+                                        >
+                                            <div>
+                                                <div className="font-bold text-stone-800 text-sm">{room.name}</div>
+                                                <div className="text-[10px] text-stone-400">#{room.code}</div>
+                                            </div>
+                                            <ArrowRight size={16} className="text-stone-300"/>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center text-stone-400 py-4 text-sm">你還沒有加入任何房間喔！</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between mb-4 px-2 pt-2">
                 <h1 className="text-2xl font-black text-stone-800">候選清單</h1>
                 <span className="text-xs font-bold bg-white px-3 py-1 rounded-full text-stone-400 shadow-sm border border-stone-200">{shortlist.length} 間</span>
@@ -914,9 +1238,9 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
                                     <div>
                                         <h4 className="font-bold text-stone-800 text-sm truncate max-w-[140px]">{r.name}</h4>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                                               {r.customCategory || r.type}
-                                            </span>
+                                            <button onClick={(e) => handleEditCategory(e, r)} className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-stone-200 transition-colors">
+                                               {r.customCategory || r.type} <Edit2 size={10} className="opacity-50"/>
+                                            </button>
                                             <div className="text-[10px] text-stone-400 flex gap-1 font-bold">
                                                 <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
                                                 <span>{r.distance}km</span>
@@ -925,7 +1249,7 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={(e) => { e.stopPropagation(); handleSystemShare(r); }} className="p-2.5 text-teal-600 bg-teal-50 rounded-xl hover:bg-teal-100 transition-colors"><Share2 size={18} /></button>
+                                    <button onClick={(e) => handleShareClick(e, r)} className="p-2.5 text-blue-500 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"><Share2 size={18} /></button>
                                     <button onClick={(e) => toggleShortlist(e, r)} className="p-2.5 text-red-400 bg-red-50 rounded-xl hover:bg-red-100 transition-colors"><X size={18}/></button>
                                 </div>
                             </div>
@@ -936,23 +1260,6 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
         </div>
     );
 };
-
-const Header = ({ userProfile, setShowProfileModal }) => (
-    <div className="px-6 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-            <div onClick={() => setShowProfileModal(true)} className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md cursor-pointer relative group transition-transform active:scale-95">
-                <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
-            </div>
-            <div>
-                <h1 className="text-lg font-black text-stone-800 leading-tight">今天吃什麼 <Utensils className="inline text-orange-500 w-4 h-4" /></h1>
-                <p className="text-xs text-stone-400 font-bold">Hi, {userProfile.name}</p>
-            </div>
-        </div>
-        <button className="p-2 bg-white rounded-full shadow-sm text-stone-400 hover:text-stone-600 transition-colors">
-            <Settings size={20} />
-        </button>
-    </div>
-);
 
 // --- App Component ---
 
@@ -1121,6 +1428,50 @@ export default function App() {
     }
   };
 
+  // Add a specific restaurant to a specific room (new feature for shortlist)
+  const addRestaurantToRoom = async (roomId, restaurant) => {
+      if(!db) return;
+      try {
+        let simpleOpeningHours = null;
+        if (restaurant.regularOpeningHours && restaurant.regularOpeningHours.weekdayDescriptions) {
+             simpleOpeningHours = {
+                 weekdayDescriptions: restaurant.regularOpeningHours.weekdayDescriptions
+             };
+        }
+
+        const docRef = doc(db, "rooms", roomId, "shared_restaurants", restaurant.id);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            alert(`「${restaurant.name}」已經在該房間的共同清單中了！`);
+            return;
+        }
+
+        await setDoc(docRef, {
+          name: restaurant.name || "未命名餐廳",
+          address: restaurant.address || "",
+          addedBy: userProfile.name,
+          type: restaurant.customCategory || restaurant.type || "美食", 
+          photoUrl: restaurant.photoUrl || null,
+          ratings: {}, 
+          eatenStatus: {}, 
+          createdAt: serverTimestamp(),
+          id: restaurant.id || "unknown_id", 
+          rating: restaurant.rating || 0,
+          userRatingsTotal: restaurant.userRatingsTotal || 0,
+          priceLevel: restaurant.priceLevel || 0,
+          isOpen: restaurant.isOpen === true, 
+          lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0), 
+          lng: typeof restaurant.lng === 'function' ? restaurant.lng() : (restaurant.lng || 0),
+          regularOpeningHours: simpleOpeningHours 
+        });
+        alert(`已成功分享「${restaurant.name}」到房間！`);
+      } catch(e) {
+          console.error(e);
+          alert("分享失敗");
+      }
+  };
+
   const removeFromSharedList = async (restaurant) => {
      if (!db || !room) return;
      if (!confirm("確定要從共同清單中移除這間餐廳嗎？")) return;
@@ -1149,15 +1500,13 @@ export default function App() {
               });
           }
           // 'default' 通常保留原本搜尋結果的排序 (關聯性)，或依照距離
-          
-          // 避免無限迴圈，只有當排序結果不同時才更新? 
-          // React state 更新會觸發 re-render，這裡簡單直接更新即可，因為使用者點擊按鈕才觸發
           setRestaurants(sorted);
       }
   }, [sortBy]);
 
   // --- 重寫: 執行搜尋 ---
   const executeSearch = async () => {
+    // ... logic remains same as previous step, omitted for brevity ...
     if (!virtualLocation) return;
     if (!isGoogleMapsReady || !window.google || !window.google.maps) {
       setErrorMsg("Google Maps API 尚未載入。請檢查 Key 是否正確填入。");
@@ -1167,8 +1516,6 @@ export default function App() {
     isSearchingRef.current = true;
 
     try {
-        // 使用 Legacy PlacesService 來支援分頁 (取得 > 20 筆結果)
-        // 建立一個隱藏的 div 給 PlacesService 使用
         const service = new window.google.maps.places.PlacesService(document.createElement('div'));
         
         let queryText = "restaurant";
@@ -1177,47 +1524,39 @@ export default function App() {
         if (timeFilter === 'dinner') queryText = "dinner restaurants";
         if (timeFilter === 'latenight') queryText = "late night food";
 
-        // 判斷是否「正在」該時段
         const currentHour = new Date().getHours();
         let isCurrentlyInSlot = false;
         
         if (timeFilter === 'breakfast' && currentHour >= 5 && currentHour < 12) isCurrentlyInSlot = true;
         else if (timeFilter === 'lunch' && currentHour >= 12 && currentHour < 18) isCurrentlyInSlot = true;
-        else if (timeFilter === 'dinner' && currentHour >= 18) isCurrentlyInSlot = true; // 18:00 - 24:00
+        else if (timeFilter === 'dinner' && currentHour >= 18) isCurrentlyInSlot = true; 
         else if (timeFilter === 'latenight' && (currentHour >= 0 && currentHour < 5)) isCurrentlyInSlot = true;
 
-        // 如果現在就在該時段，可以開啟 openNow 過濾
-        // 如果使用者是在早上查晚餐，就不能開 openNow
         const openNowFilter = isCurrentlyInSlot;
 
         const request = {
             query: queryText,
             location: new window.google.maps.LatLng(virtualLocation.lat, virtualLocation.lng),
             radius: distFilter,
-            openNow: openNowFilter, // 關鍵：根據是否為當下時段來決定是否只查營業中
+            openNow: openNowFilter,
         };
 
         let allResults = [];
         let pageCount = 0;
 
-        // 遞迴函式處理分頁
         const fetchPage = (results, status, pagination) => {
             if (status === window.google.maps.places.PlacesServiceStatus.OK) {
                 allResults = [...allResults, ...results];
                 pageCount++;
 
-                // 獲取 3 頁 (約 60 筆) 或直到沒有下一頁
                 if (pagination && pagination.hasNextPage && pageCount < 3 && isSearchingRef.current) {
-                    // Google API 要求延遲 2 秒才能抓下一頁
                     setTimeout(() => {
                         pagination.nextPage();
                     }, 2000);
                 } else {
-                    // 完成抓取，開始處理資料
                     processResults(allResults);
                 }
             } else {
-                // 如果第一頁就沒結果，或是錯誤
                 if(allResults.length > 0) processResults(allResults);
                 else {
                     setLoading(false);
@@ -1232,8 +1571,6 @@ export default function App() {
             const formatted = places.map(place => {
                 let photoUrl = null;
                 if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getUrl({ maxWidth: 400 });
-                
-                // Legacy API 的 opening_hours 只有 open_now
                 let isOpenStatus = place.opening_hours ? place.opening_hours.open_now : null;
 
                 return {
@@ -1252,7 +1589,6 @@ export default function App() {
                 };
             });
 
-            // 過濾距離 (Legacy API radius 有時候不準確，client 端再濾一次但放寬標準)
             let filtered = formatted.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
 
             if (ratingFilter !== 'all') filtered = filtered.filter(r => (r.rating || 0) >= parseInt(ratingFilter));
@@ -1262,12 +1598,10 @@ export default function App() {
                 filtered = filtered.filter(r => {
                     const p = r.priceLevel;
                     const effectivePrice = convertPriceLevel(p);
-                    // 嚴格比對：只顯示符合該價格等級的餐廳，不顯示未標示的
                     return effectivePrice === targetPrice;
                 });
             }
 
-            // 預設依照距離排序
             filtered.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
             
             if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
@@ -1276,7 +1610,6 @@ export default function App() {
             isSearchingRef.current = false;
         };
 
-        // 開始搜尋
         service.textSearch(request, fetchPage);
 
     } catch (err) {
@@ -1291,6 +1624,13 @@ export default function App() {
       const exists = prev.some(item => item.id === restaurant.id);
       return exists ? prev.filter(item => item.id !== restaurant.id) : [...prev, restaurant];
     });
+  };
+
+  // NEW: Update category in shortlist
+  const updateShortlistCategory = (id, newCategory) => {
+      setShortlist(prev => prev.map(item => 
+          item.id === id ? { ...item, customCategory: newCategory } : item
+      ));
   };
 
   const handleSystemShare = (restaurant) => {
@@ -1444,6 +1784,9 @@ export default function App() {
             setShowDetail={setShowDetail}
             handleSystemShare={handleSystemShare}
             toggleShortlist={toggleShortlist}
+            updateShortlistCategory={updateShortlistCategory}
+            myRooms={myRooms}
+            addRestaurantToRoom={addRestaurantToRoom}
           />
         )}
         
