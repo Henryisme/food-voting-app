@@ -5,7 +5,7 @@ import {
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
   Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
-  Minimize2, Maximize2, Tag, DollarSign
+  Minimize2, Maximize2, Tag, DollarSign, Check
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -67,6 +67,21 @@ const mapGoogleTypeToCategory = (types) => {
   return '其他';
 };
 
+// 轉換 Google Price Level 字串為數字
+const convertPriceLevel = (level) => {
+    if (typeof level === 'number') return level;
+    if (!level) return 0;
+    
+    // 處理 Google Maps New Places API 的 Enum 字串
+    if (level === 'PRICE_LEVEL_FREE') return 0;
+    if (level === 'PRICE_LEVEL_INEXPENSIVE') return 1;
+    if (level === 'PRICE_LEVEL_MODERATE') return 2;
+    if (level === 'PRICE_LEVEL_EXPENSIVE') return 3;
+    if (level === 'PRICE_LEVEL_VERY_EXPENSIVE') return 4;
+    
+    return 0; // 預設為無標示
+};
+
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   if (!lat1 || !lon1 || !lat2 || !lon2) return "N/A";
   const R = 6371; 
@@ -111,14 +126,17 @@ const callGemini = async (prompt) => {
   }
 };
 
-const PriceDisplay = ({ level }) => (
-  <div className="flex text-emerald-600 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-    {typeof level === 'number' 
-      ? [...Array(level)].map((_, i) => <span key={i}>$</span>) 
-      : <span>{level === 'PRICE_LEVEL_EXPENSIVE' || level === 'PRICE_LEVEL_VERY_EXPENSIVE' ? '$$$' : '$$'}</span>
-    }
-  </div>
-);
+const PriceDisplay = ({ level }) => {
+  const numLevel = convertPriceLevel(level);
+  return (
+    <div className="flex text-emerald-600 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+      {numLevel > 0 
+        ? [...Array(numLevel)].map((_, i) => <span key={i}>$</span>) 
+        : <span>$</span> // 預設顯示一個 $ (平價/未知)
+      }
+    </div>
+  );
+};
 
 const StarRating = ({ rating }) => (
   <div className="flex items-center gap-1 bg-orange-50 px-2 py-1 rounded-full text-orange-600 font-bold text-[10px] border border-orange-100">
@@ -193,6 +211,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
   const [mapError, setMapError] = useState("");
   const [addressInput, setAddressInput] = useState("");
+  const [foundPlaceName, setFoundPlaceName] = useState(""); // 儲存找到的地點名稱
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   
@@ -214,11 +233,13 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
           const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
           marker.setPosition(newLoc); 
           setSelectedLoc(newLoc); 
+          setFoundPlaceName("地圖選取位置"); // 重置名稱
           map.panTo(newLoc); 
       });
       marker.addListener("dragend", (e) => { 
           const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
           setSelectedLoc(newLoc); 
+          setFoundPlaceName("地圖選取位置"); // 重置名稱
           map.panTo(newLoc); 
       });
     } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
@@ -226,16 +247,43 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
 
   const handleAddressSearch = () => {
       if (!window.google || !window.google.maps || !addressInput.trim()) return;
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ address: addressInput }, (results, status) => {
-          if (status === 'OK' && results[0]) {
-              const location = results[0].geometry.location;
+      
+      // 使用 Places Service 進行更精確的「地標」與「地址」搜尋
+      const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
+      const request = {
+          query: addressInput,
+          fields: ['name', 'geometry', 'formatted_address'],
+      };
+
+      service.findPlaceFromQuery(request, (results, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+              const place = results[0];
+              const location = place.geometry.location;
               const newLoc = { lat: location.lat(), lng: location.lng() };
+              
               setSelectedLoc(newLoc);
-              if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
+              setFoundPlaceName(place.name || place.formatted_address); // 顯示找到的地點名稱
+              
+              if (mapInstanceRef.current) {
+                  mapInstanceRef.current.panTo(newLoc);
+                  mapInstanceRef.current.setZoom(16);
+              }
               if (markerRef.current) markerRef.current.setPosition(newLoc);
           } else {
-              alert('找不到該地址，請嘗試更具體的地址名稱。');
+              // 如果 Places 找不到，回退到 Geocoder 嘗試
+              const geocoder = new window.google.maps.Geocoder();
+              geocoder.geocode({ address: addressInput }, (results, status) => {
+                  if (status === 'OK' && results[0]) {
+                      const location = results[0].geometry.location;
+                      const newLoc = { lat: location.lat(), lng: location.lng() };
+                      setSelectedLoc(newLoc);
+                      setFoundPlaceName(results[0].formatted_address);
+                      if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
+                      if (markerRef.current) markerRef.current.setPosition(newLoc);
+                  } else {
+                      alert('找不到該地點，請嘗試更具體的名稱或地址。');
+                  }
+              });
           }
       });
   };
@@ -247,7 +295,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
       </div>
       
-      <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-36">
+      <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-40">
         {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
         {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
       </div>
@@ -260,16 +308,24 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
                 value={addressInput} 
                 onChange={(e) => setAddressInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()}
-                placeholder="輸入地址或地標 (例如: 台北101)" 
-                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" 
+                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500"
              />
-             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold">搜尋</button>
+             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0">搜尋</button>
          </div>
+
+         {/* 找到的地點確認區塊 */}
+         {foundPlaceName && (
+             <div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in">
+                 <Check size={14} />
+                 <span>定位至: {foundPlaceName}</span>
+             </div>
+         )}
 
          <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
          <div className="flex gap-2">
-            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
-            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認修改</button>
+            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
+            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認此地點</button>
          </div>
       </div>
     </div>
@@ -1095,15 +1151,15 @@ export default function App() {
             let filtered = formatted.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
             if (ratingFilter !== 'all') filtered = filtered.filter(r => (r.rating || 0) >= parseInt(ratingFilter));
             
-            // 價格篩選邏輯 (無標示視為 0)
+            // 價格篩選邏輯 (使用轉換後的數字)
             if (priceFilter !== 'all') {
                 const targetPrice = parseInt(priceFilter);
                 filtered = filtered.filter(r => {
+                    // 使用 convertPriceLevel 將 API 的字串或 undefined 轉為數字 (0-4)
                     const p = r.priceLevel;
-                    // 將 undefined/null 視為 0
-                    const effectivePrice = (p === undefined || p === null) ? 0 : p;
+                    const effectivePrice = convertPriceLevel(p);
                     
-                    if (targetPrice === 1) return effectivePrice <= 1; // 平價: 含 Free (0) & Inexpensive (1)
+                    if (targetPrice === 1) return effectivePrice <= 1; // 平價: 含 0 (未知) & 1
                     return effectivePrice === targetPrice;
                 });
             }
