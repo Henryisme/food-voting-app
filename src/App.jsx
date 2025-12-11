@@ -19,7 +19,8 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";          
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
+     
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -388,7 +389,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                         <div className="relative w-64 h-64">
                             {/* Wheel */}
                             <div 
-                                ref={canvasRef}
                                 className="w-full h-full rounded-full shadow-xl overflow-hidden border-4 border-white"
                                 style={{
                                     transform: `rotate(${wheelRotation}deg)`,
@@ -565,7 +565,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
   const [mapError, setMapError] = useState("");
   const [addressInput, setAddressInput] = useState("");
-  const [foundPlaceName, setFoundPlaceName] = useState(""); 
+  const [foundPlaceName, setFoundPlaceName] = useState(""); // 儲存找到的地點名稱
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   
@@ -587,13 +587,13 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
           const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
           marker.setPosition(newLoc); 
           setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); 
+          setFoundPlaceName("地圖選取位置"); // 重置名稱
           map.panTo(newLoc); 
       });
       marker.addListener("dragend", (e) => { 
           const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
           setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); 
+          setFoundPlaceName("地圖選取位置"); // 重置名稱
           map.panTo(newLoc); 
       });
     } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
@@ -601,19 +601,30 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
 
   const handleAddressSearch = () => {
       if (!window.google || !window.google.maps || !addressInput.trim()) return;
+      
+      // 使用 Places Service 進行更精確的「地標」與「地址」搜尋
       const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
-      const request = { query: addressInput, fields: ['name', 'geometry', 'formatted_address'] };
+      const request = {
+          query: addressInput,
+          fields: ['name', 'geometry', 'formatted_address'],
+      };
 
       service.findPlaceFromQuery(request, (results, status) => {
           if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
               const place = results[0];
               const location = place.geometry.location;
               const newLoc = { lat: location.lat(), lng: location.lng() };
+              
               setSelectedLoc(newLoc);
-              setFoundPlaceName(place.name || place.formatted_address); 
-              if (mapInstanceRef.current) { mapInstanceRef.current.panTo(newLoc); mapInstanceRef.current.setZoom(16); }
+              setFoundPlaceName(place.name || place.formatted_address); // 顯示找到的地點名稱
+              
+              if (mapInstanceRef.current) {
+                  mapInstanceRef.current.panTo(newLoc);
+                  mapInstanceRef.current.setZoom(16);
+              }
               if (markerRef.current) markerRef.current.setPosition(newLoc);
           } else {
+              // 如果 Places 找不到，回退到 Geocoder 嘗試
               const geocoder = new window.google.maps.Geocoder();
               geocoder.geocode({ address: addressInput }, (results, status) => {
                   if (status === 'OK' && results[0]) {
@@ -623,7 +634,9 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
                       setFoundPlaceName(results[0].formatted_address);
                       if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
                       if (markerRef.current) markerRef.current.setPosition(newLoc);
-                  } else { alert('找不到該地點，請嘗試更具體的名稱或地址。'); }
+                  } else {
+                      alert('找不到該地點，請嘗試更具體的名稱或地址。');
+                  }
               });
           }
       });
@@ -635,16 +648,34 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
         <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
       </div>
+      
       <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-40">
         {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
         {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
       </div>
+
       <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
+         {/* 地址搜尋欄 */}
          <div className="flex gap-2">
-             <input type="text" value={addressInput} onChange={(e) => setAddressInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()} placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+             <input 
+                type="text" 
+                value={addressInput} 
+                onChange={(e) => setAddressInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()}
+                placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" 
+                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500"
+             />
              <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0">搜尋</button>
          </div>
-         {foundPlaceName && (<div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in"><Check size={14} /><span>定位至: {foundPlaceName}</span></div>)}
+
+         {/* 找到的地點確認區塊 */}
+         {foundPlaceName && (
+             <div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in">
+                 <Check size={14} />
+                 <span>定位至: {foundPlaceName}</span>
+             </div>
+         )}
+
          <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
          <div className="flex gap-2">
             <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
@@ -1009,7 +1040,6 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
       </div>
     );
 };
-// ... DetailModal, NavBar, SearchPanelComponent, SearchResultsComponent, ShortlistScreenComponent ...
 
 const DetailModal = ({ showDetail, ...props }) => {
     if (!showDetail) return null;
@@ -1020,6 +1050,7 @@ const DetailModal = ({ showDetail, ...props }) => {
     
     let todayHours = "暫無資料";
     let displayOpeningHours = r.openingHours; 
+    // Compatibility check for new/legacy API data structure
     if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) {
         displayOpeningHours = r.regularOpeningHours.weekdayDescriptions;
     }
@@ -1773,6 +1804,50 @@ export default function App() {
           }
       } else {
            setMyRooms(prev => prev.filter(r => r.id !== roomId));
+      }
+  };
+
+  // Add a specific restaurant to a specific room (new feature for shortlist)
+  const addRestaurantToRoom = async (roomId, restaurant) => {
+      if(!db) return;
+      try {
+        let simpleOpeningHours = null;
+        if (restaurant.regularOpeningHours && restaurant.regularOpeningHours.weekdayDescriptions) {
+             simpleOpeningHours = {
+                 weekdayDescriptions: restaurant.regularOpeningHours.weekdayDescriptions
+             };
+        }
+
+        const docRef = doc(db, "rooms", roomId, "shared_restaurants", restaurant.id);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            alert(`「${restaurant.name}」已經在該房間的共同清單中了！`);
+            return;
+        }
+
+        await setDoc(docRef, {
+          name: restaurant.name || "未命名餐廳",
+          address: restaurant.address || "",
+          addedBy: userProfile.name,
+          type: restaurant.customCategory || restaurant.type || "美食", 
+          photoUrl: restaurant.photoUrl || null,
+          ratings: {}, 
+          eatenStatus: {}, 
+          createdAt: serverTimestamp(),
+          id: restaurant.id || "unknown_id", 
+          rating: restaurant.rating || 0,
+          userRatingsTotal: restaurant.userRatingsTotal || 0,
+          priceLevel: restaurant.priceLevel || 0,
+          isOpen: restaurant.isOpen === true, 
+          lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0), 
+          lng: typeof restaurant.lng === 'function' ? restaurant.lng() : (restaurant.lng || 0),
+          regularOpeningHours: simpleOpeningHours 
+        });
+        alert(`已成功分享「${restaurant.name}」到房間！`);
+      } catch(e) {
+          console.error(e);
+          alert("分享失敗");
       }
   };
 
