@@ -238,6 +238,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
         setTimeout(() => {
             // Calculate winner
+            // Rotation aligns 0 degrees at top.
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
@@ -565,7 +566,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   const [selectedLoc, setSelectedLoc] = useState(initialLocation);
   const [mapError, setMapError] = useState("");
   const [addressInput, setAddressInput] = useState("");
-  const [foundPlaceName, setFoundPlaceName] = useState(""); // 儲存找到的地點名稱
+  const [foundPlaceName, setFoundPlaceName] = useState(""); 
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
   
@@ -587,13 +588,13 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
           const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
           marker.setPosition(newLoc); 
           setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); // 重置名稱
+          setFoundPlaceName("地圖選取位置"); 
           map.panTo(newLoc); 
       });
       marker.addListener("dragend", (e) => { 
           const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
           setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); // 重置名稱
+          setFoundPlaceName("地圖選取位置"); 
           map.panTo(newLoc); 
       });
     } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
@@ -601,30 +602,19 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
 
   const handleAddressSearch = () => {
       if (!window.google || !window.google.maps || !addressInput.trim()) return;
-      
-      // 使用 Places Service 進行更精確的「地標」與「地址」搜尋
       const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
-      const request = {
-          query: addressInput,
-          fields: ['name', 'geometry', 'formatted_address'],
-      };
+      const request = { query: addressInput, fields: ['name', 'geometry', 'formatted_address'] };
 
       service.findPlaceFromQuery(request, (results, status) => {
           if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
               const place = results[0];
               const location = place.geometry.location;
               const newLoc = { lat: location.lat(), lng: location.lng() };
-              
               setSelectedLoc(newLoc);
-              setFoundPlaceName(place.name || place.formatted_address); // 顯示找到的地點名稱
-              
-              if (mapInstanceRef.current) {
-                  mapInstanceRef.current.panTo(newLoc);
-                  mapInstanceRef.current.setZoom(16);
-              }
+              setFoundPlaceName(place.name || place.formatted_address); 
+              if (mapInstanceRef.current) { mapInstanceRef.current.panTo(newLoc); mapInstanceRef.current.setZoom(16); }
               if (markerRef.current) markerRef.current.setPosition(newLoc);
           } else {
-              // 如果 Places 找不到，回退到 Geocoder 嘗試
               const geocoder = new window.google.maps.Geocoder();
               geocoder.geocode({ address: addressInput }, (results, status) => {
                   if (status === 'OK' && results[0]) {
@@ -634,9 +624,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
                       setFoundPlaceName(results[0].formatted_address);
                       if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
                       if (markerRef.current) markerRef.current.setPosition(newLoc);
-                  } else {
-                      alert('找不到該地點，請嘗試更具體的名稱或地址。');
-                  }
+                  } else { alert('找不到該地點，請嘗試更具體的名稱或地址。'); }
               });
           }
       });
@@ -648,34 +636,16 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
         <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
       </div>
-      
       <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-40">
         {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
         {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
       </div>
-
       <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-         {/* 地址搜尋欄 */}
          <div className="flex gap-2">
-             <input 
-                type="text" 
-                value={addressInput} 
-                onChange={(e) => setAddressInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()}
-                placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" 
-                className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500"
-             />
+             <input type="text" value={addressInput} onChange={(e) => setAddressInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()} placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500" />
              <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0">搜尋</button>
          </div>
-
-         {/* 找到的地點確認區塊 */}
-         {foundPlaceName && (
-             <div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in">
-                 <Check size={14} />
-                 <span>定位至: {foundPlaceName}</span>
-             </div>
-         )}
-
+         {foundPlaceName && (<div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in"><Check size={14} /><span>定位至: {foundPlaceName}</span></div>)}
          <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
          <div className="flex gap-2">
             <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
@@ -1048,21 +1018,21 @@ const DetailModal = ({ showDetail, ...props }) => {
     const isShortlisted = shortlist.some(item => item.id === r.id);
     const isInSharedList = room && sharedRestaurants.some(item => item.id === r.id);
     
-    let todayHours = "暫無資料";
+    let todayHours = r.todayHours || "暫無資料";
     let displayOpeningHours = r.openingHours; 
     // Compatibility check for new/legacy API data structure
     if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) {
         displayOpeningHours = r.regularOpeningHours.weekdayDescriptions;
     }
-
-    if (Array.isArray(displayOpeningHours)) {
+    
+    // Fallback if todayHours wasn't calculated in search but we have data
+    if (todayHours === "暫無資料" && Array.isArray(displayOpeningHours)) {
        const day = new Date().getDay(); 
        const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
        const todayStr = daysMap[day];
        const todayInfo = displayOpeningHours.find(h => h.includes(todayStr) || h.includes(todayStr.substring(0, 3))); 
        if (todayInfo) todayHours = todayInfo;
-       else if(displayOpeningHours.length > 0) todayHours = displayOpeningHours[(day + 6) % 7]; 
-    } else if (typeof displayOpeningHours === 'string') todayHours = displayOpeningHours;
+    }
 
     return (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-right duration-300 font-rounded">
@@ -1260,6 +1230,16 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                                         {r.isOpen ? <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold">營業中</span> : <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">休息</span>}
                                     </div>
                                 </div>
+                                
+                                {/* --- [開始] 新增：顯示今日營業時間 UI --- */}
+                                {r.todayHours && (
+                                    <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-stone-500 bg-stone-50 px-2 py-1 rounded-md border border-stone-100 w-fit">
+                                        <Clock size={10} className="text-stone-400"/>
+                                        <span className="truncate max-w-[150px] font-medium">{r.todayHours}</span>
+                                    </div>
+                                )}
+                                {/* --- [結束] 新增顯示今日營業時間 UI --- */}
+
                                 <div className="flex justify-between items-end mt-1">
                                     <div className="flex gap-1.5 items-center"><StarRating rating={r.rating} /><PriceDisplay level={r.priceLevel} /></div>
                                     <button onClick={(e) => toggleShortlist(e, r)} className={`p-2 rounded-full transition-colors ${shortlist.some(item => item.id === r.id) ? 'bg-rose-50 text-rose-500' : 'bg-stone-50 text-stone-300 hover:bg-stone-100'}`}><Heart size={16} fill={shortlist.some(item => item.id === r.id) ? "currentColor" : "none"} /></button>
@@ -1610,7 +1590,6 @@ export default function App() {
 
   // --- 重寫: 執行搜尋 ---
   const executeSearch = async () => {
-    // ... logic remains same as previous step, omitted for brevity ...
     if (!virtualLocation) return;
     if (!isGoogleMapsReady || !window.google || !window.google.maps) {
       setErrorMsg("Google Maps API 尚未載入。請檢查 Key 是否正確填入。");
@@ -1620,7 +1599,7 @@ export default function App() {
     isSearchingRef.current = true;
 
     try {
-        const service = new window.google.maps.places.PlacesService(document.createElement('div'));
+        const { Place } = await google.maps.importLibrary("places");
         
         let queryText = "restaurant";
         if (timeFilter === 'breakfast') queryText = "breakfast spots";
@@ -1638,61 +1617,83 @@ export default function App() {
 
         const openNowFilter = isCurrentlyInSlot;
 
-        const request = {
-            query: queryText,
-            location: new window.google.maps.LatLng(virtualLocation.lat, virtualLocation.lng),
-            radius: distFilter,
-            openNow: openNowFilter,
-        };
+        // Use New Places API: searchByText
+        // This supports 'regularOpeningHours' field
+        const { places } = await Place.searchByText({
+            textQuery: queryText,
+            fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos', 'businessStatus'],
+            locationBias: { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: distFilter },
+            isOpen: openNowFilter, // Filter by open now if in time slot
+            maxResultCount: 20 // API limit per page for New API, pagination handling requires token logic which is complex in single file. Sticking to 20 high quality results with hours.
+        });
 
-        let allResults = [];
-        let pageCount = 0;
+        if (!isSearchingRef.current) return;
+        isSearchingRef.current = false;
 
-        const fetchPage = (results, status, pagination) => {
-            if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-                allResults = [...allResults, ...results];
-                pageCount++;
-
-                if (pagination && pagination.hasNextPage && pageCount < 3 && isSearchingRef.current) {
-                    setTimeout(() => {
-                        pagination.nextPage();
-                    }, 2000);
-                } else {
-                    processResults(allResults);
-                }
-            } else {
-                if(allResults.length > 0) processResults(allResults);
-                else {
-                    setLoading(false);
-                    setErrorMsg("找不到餐廳，請嘗試放寬條件。");
-                }
-            }
-        };
-
-        const processResults = async (places) => {
-            if (!isSearchingRef.current) return;
-            
-            const formatted = places.map(place => {
+        if (places && places.length > 0) {
+            const formatted = await Promise.all(places.map(async (place) => {
                 let photoUrl = null;
-                if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getUrl({ maxWidth: 400 });
-                let isOpenStatus = place.opening_hours ? place.opening_hours.open_now : null;
+                if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getURI({ maxWidth: 400 });
+                
+                let isOpenStatus = null;
+                // New API doesn't have simple boolean isOpen property on result object directly exposed in same way always,
+                // but we filtered by isOpen above if needed. 
+                // However, we want to display status. `regularOpeningHours` has `isOpen()` method in the class instance.
+                try { isOpenStatus = await place.isOpen(); } catch(e) {}
+                
+                // --- Robust Hours Extraction ---
+                let todayHours = null; // Default to null so we don't show "Check details" uselessly unless we want to
+                if (place.regularOpeningHours && place.regularOpeningHours.weekdayDescriptions) {
+                    const now = new Date();
+                    const dayIndex = now.getDay(); // 0 (Sun) - 6 (Sat)
+                    
+                    // The weekdayDescriptions array usually starts with Monday (index 0) to Sunday (index 6) in API? 
+                    // Let's rely on string matching as implemented but improve it.
+                    const dayNames = [
+                        new Intl.DateTimeFormat('zh-TW', { weekday: 'long' }).format(now), // 星期一
+                        "週" + "日一二三四五六"[dayIndex], // 週一
+                        new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(now), // Monday
+                    ];
+                    
+                    const todayDesc = place.regularOpeningHours.weekdayDescriptions.find(desc => 
+                        dayNames.some(name => desc.includes(name))
+                    );
+
+                    if (todayDesc) {
+                        // Extract time part: "星期一: 11:00 – 21:00" -> "11:00 – 21:00"
+                        // Or "Monday: Closed"
+                        let timePart = todayDesc.split(/[:：]\s+/).slice(1).join(":").trim();
+                        if(!timePart) {
+                             // Fallback if split didn't work (e.g. no colon)
+                             // Try removing the day name
+                             timePart = todayDesc;
+                             dayNames.forEach(name => {
+                                 timePart = timePart.replace(name, '').trim();
+                             });
+                        }
+                        todayHours = timePart;
+                    }
+                }
 
                 return {
-                    id: place.place_id, 
-                    name: place.name, 
+                    id: place.id, 
+                    name: place.displayName, 
                     type: mapGoogleTypeToCategory(place.types), 
                     rating: place.rating,
-                    userRatingsTotal: place.user_ratings_total, 
-                    priceLevel: place.price_level, 
+                    userRatingsTotal: place.userRatingCount, 
+                    priceLevel: place.priceLevel, 
                     isOpen: isOpenStatus,
-                    lat: place.geometry.location.lat(), 
-                    lng: place.geometry.location.lng(),
-                    distance: calculateDistance(virtualLocation.lat, virtualLocation.lng, place.geometry.location.lat(), place.geometry.location.lng()),
-                    address: place.formatted_address, 
-                    photoUrl: photoUrl
+                    todayHours: todayHours, // Add this field
+                    lat: place.location.lat(), 
+                    lng: place.location.lng(),
+                    distance: calculateDistance(virtualLocation.lat, virtualLocation.lng, place.location.lat(), place.location.lng()),
+                    address: place.formattedAddress, 
+                    photoUrl: photoUrl,
+                    regularOpeningHours: place.regularOpeningHours // Keep full object for detail modal
                 };
-            });
+            }));
 
+            // Client-side filtering (Distance & Price)
             let filtered = formatted.filter(r => parseFloat(r.distance) * 1000 <= distFilter * 1.5);
 
             if (ratingFilter !== 'all') filtered = filtered.filter(r => (r.rating || 0) >= parseInt(ratingFilter));
@@ -1702,19 +1703,21 @@ export default function App() {
                 filtered = filtered.filter(r => {
                     const p = r.priceLevel;
                     const effectivePrice = convertPriceLevel(p);
+                    // Strict filtering
                     return effectivePrice === targetPrice;
                 });
             }
 
+            // Default Sort: Distance
             filtered.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
             
             if (filtered.length === 0) setErrorMsg("篩選條件太嚴格，附近找不到餐廳 QQ");
             setRestaurants(filtered);
-            setLoading(false);
-            isSearchingRef.current = false;
-        };
-
-        service.textSearch(request, fetchPage);
+        } else {
+            setErrorMsg("找不到餐廳，請嘗試放寬條件。");
+            setRestaurants([]);
+        }
+        setLoading(false);
 
     } catch (err) {
         setLoading(false);
@@ -1804,50 +1807,6 @@ export default function App() {
           }
       } else {
            setMyRooms(prev => prev.filter(r => r.id !== roomId));
-      }
-  };
-
-  // Add a specific restaurant to a specific room (new feature for shortlist)
-  const addRestaurantToRoom = async (roomId, restaurant) => {
-      if(!db) return;
-      try {
-        let simpleOpeningHours = null;
-        if (restaurant.regularOpeningHours && restaurant.regularOpeningHours.weekdayDescriptions) {
-             simpleOpeningHours = {
-                 weekdayDescriptions: restaurant.regularOpeningHours.weekdayDescriptions
-             };
-        }
-
-        const docRef = doc(db, "rooms", roomId, "shared_restaurants", restaurant.id);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-            alert(`「${restaurant.name}」已經在該房間的共同清單中了！`);
-            return;
-        }
-
-        await setDoc(docRef, {
-          name: restaurant.name || "未命名餐廳",
-          address: restaurant.address || "",
-          addedBy: userProfile.name,
-          type: restaurant.customCategory || restaurant.type || "美食", 
-          photoUrl: restaurant.photoUrl || null,
-          ratings: {}, 
-          eatenStatus: {}, 
-          createdAt: serverTimestamp(),
-          id: restaurant.id || "unknown_id", 
-          rating: restaurant.rating || 0,
-          userRatingsTotal: restaurant.userRatingsTotal || 0,
-          priceLevel: restaurant.priceLevel || 0,
-          isOpen: restaurant.isOpen === true, 
-          lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0), 
-          lng: typeof restaurant.lng === 'function' ? restaurant.lng() : (restaurant.lng || 0),
-          regularOpeningHours: simpleOpeningHours 
-        });
-        alert(`已成功分享「${restaurant.name}」到房間！`);
-      } catch(e) {
-          console.error(e);
-          alert("分享失敗");
       }
   };
 
