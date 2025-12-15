@@ -19,8 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
-    
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";         
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -467,7 +466,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                                 x2={`${((cIdx + 1) / (candidates.length - 1)) * 100}%`}
                                                 y2={`${y}%`}
                                                 stroke="#94a3b8" // Darker gray for visibility
-                                                strokeWidth="4"
+                                                strokeWidth="4" 
                                                 strokeLinecap="round"
                                             />
                                         ));
