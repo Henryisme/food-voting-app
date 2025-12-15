@@ -20,7 +20,7 @@ import {
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
-     
+    
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -374,7 +374,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
                 <div className="p-4 bg-stone-900 text-white flex justify-between items-center">
-                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> Let God Decide </h3>
+                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> Let God Decide</h3>
                     <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full"><X size={20}/></button>
                 </div>
                 
@@ -449,7 +449,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                                 key={i} 
                                                 x1={`${x}%`} y1="0%" 
                                                 x2={`${x}%`} y2="100%" 
-                                                stroke="#e5e7eb" 
+                                                stroke="#94a3b8" // Darker gray for visibility
                                                 strokeWidth="4" 
                                                 strokeLinecap="round" 
                                             />
@@ -466,7 +466,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                                 y1={`${y}%`}
                                                 x2={`${((cIdx + 1) / (candidates.length - 1)) * 100}%`}
                                                 y2={`${y}%`}
-                                                stroke="#e5e7eb"
+                                                stroke="#94a3b8" // Darker gray for visibility
                                                 strokeWidth="4"
                                                 strokeLinecap="round"
                                             />
@@ -1623,7 +1623,7 @@ export default function App() {
             textQuery: queryText,
             fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos', 'businessStatus'],
             locationBias: { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: distFilter },
-            isOpen: openNowFilter, // Filter by open now if in time slot
+            openNow: openNowFilter, // Filter by open now if in time slot
             maxResultCount: 20 // API limit per page for New API, pagination handling requires token logic which is complex in single file. Sticking to 20 high quality results with hours.
         });
 
