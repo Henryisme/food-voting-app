@@ -19,7 +19,7 @@ import {
 // ⚠️ 設定區
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";         
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -237,7 +237,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
         setTimeout(() => {
             // Calculate winner
-            // Rotation aligns 0 degrees at top.
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
@@ -1622,7 +1621,7 @@ export default function App() {
             textQuery: queryText,
             fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos', 'businessStatus'],
             locationBias: { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: distFilter },
-            openNow: openNowFilter, // Filter by open now if in time slot
+            isOpenNow: openNowFilter, // Filter by open now if in time slot
             maxResultCount: 20 // API limit per page for New API, pagination handling requires token logic which is complex in single file. Sticking to 20 high quality results with hours.
         });
 
