@@ -20,7 +20,7 @@ import {
 // ==========================================
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
-    
+     
 
 // 🔥 Firebase 設定
 const FIREBASE_CONFIG = {
@@ -214,6 +214,7 @@ const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
 );
 
 // --- Decision Maker Modal (Updated with SVG for better visuals) ---
+// This component was missing in the previous context, re-adding it now.
 const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); // 'wheel' or 'ladder'
     const [result, setResult] = useState(null);
@@ -238,7 +239,9 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
         setTimeout(() => {
             // Calculate winner
+            // Rotation aligns 0 degrees at top.
             const normalizedRotation = totalRotation % 360;
+            // The slice currently at 0deg is the one that was at (360 - normalizedRotation) originally
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
             const winningIndex = Math.floor(targetAngle / sliceAngle);
@@ -373,7 +376,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         <div className="fixed inset-0 z-[90] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
                 <div className="p-4 bg-stone-900 text-white flex justify-between items-center">
-                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> Let God Decide </h3>
+                    <h3 className="font-bold flex items-center gap-2"><Sparkles className="text-yellow-400"/> 命運決策台</h3>
                     <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full"><X size={20}/></button>
                 </div>
                 
