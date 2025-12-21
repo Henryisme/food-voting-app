@@ -189,7 +189,7 @@ const calculateTravelTime = (meters) => {
   return { walk, bike, car };
 };
 
-// --- 子組件定義 ---
+// --- 子組件定義 (全部移到 App 前面) ---
 
 const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar items-center">
@@ -314,17 +314,20 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); 
     const [result, setResult] = useState(null);
     const [isSpinning, setIsSpinning] = useState(false);
+    
+    // --- Wheel State & Logic ---
     const [wheelRotation, setWheelRotation] = useState(0);
     const WHEEL_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF8C42', '#1A535C', '#F7FFF7', '#FFD3B6', '#DCEDC1', '#A8E6CF'];
 
-    // Wheel logic
     const spinWheel = () => {
         if (isSpinning) return;
         setIsSpinning(true);
         setResult(null);
+        
         const randomOffset = Math.random() * 360;
         const totalRotation = 1800 + randomOffset;
         setWheelRotation(prev => prev + totalRotation);
+
         setTimeout(() => {
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
@@ -335,7 +338,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         }, 4000); 
     };
 
-    // Ladder logic
+    // --- Ladder State & Logic ---
     const [ladderPaths, setLadderPaths] = useState([]);
     const [ladderActivePath, setLadderActivePath] = useState([]); 
     const [selectedLadderStart, setSelectedLadderStart] = useState(null);
@@ -386,8 +389,10 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                 setIsSpinning(false);
                 return;
             }
+
             const bridges = ladderPaths[currentStep];
             let nextLane = currentLane;
+            
             if(currentLane > 0 && bridges[currentLane-1]) nextLane = currentLane - 1;
             else if(currentLane < candidates.length - 1 && bridges[currentLane]) nextLane = currentLane + 1;
 
@@ -397,6 +402,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             setLadderActivePath([...pathHistory]);
             currentLane = nextLane;
             currentStep++;
+
         }, 300); 
     };
 
@@ -486,6 +492,11 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                     </div>
                                 ))}
                             </div>
+                            {!isSpinning && !result && !selectedLadderStart && (
+                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/90 px-4 py-2 rounded-xl text-xs font-bold text-stone-500 shadow-sm border border-stone-100 z-20 pointer-events-none">
+                                    請點擊上方數字選擇起點
+                                </div>
+                            )}
                         </div>
                     )}
                     {result && !isSpinning && (
@@ -504,8 +515,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         </div>
     );
 };
-
-// ... ProfileModal, RoomRestaurantSearchModal, SocialView, LobbyView, DetailModal, NavBar, SearchPanelComponent, SearchResultsComponent, ShortlistScreenComponent ...
 
 const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
   const [localName, setLocalName] = useState(userProfile.name);
@@ -541,43 +550,23 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
         if(!window.google || !window.google.maps || !queryText.trim()) return;
         setLoading(true);
         try {
-            // Revert to Legacy PlacesService to match main search behavior and ensure data consistency
-            const service = new window.google.maps.places.PlacesService(document.createElement('div'));
-            const request = {
-                query: queryText,
-                location: new window.google.maps.LatLng(virtualLocation.lat, virtualLocation.lng),
-                radius: 1000,
-            };
-
-            service.textSearch(request, (places, status) => {
-                if (status === window.google.maps.places.PlacesServiceStatus.OK && places) {
-                     const formatted = places.map(place => {
-                        let photoUrl = null;
-                        if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getUrl({ maxWidth: 200 });
-                        // Legacy API uses opening_hours.open_now
-                        let isOpenStatus = place.opening_hours ? place.opening_hours.open_now : null;
-
-                        return {
-                            id: place.place_id, 
-                            name: place.name, 
-                            type: mapGoogleTypeToCategory(place.types), 
-                            rating: place.rating, 
-                            priceLevel: place.price_level, 
-                            address: place.formatted_address, 
-                            photoUrl, 
-                            isOpen: isOpenStatus, 
-                            lat: place.geometry.location.lat(), 
-                            lng: place.geometry.location.lng(),
-                            // Store original opening_hours for DetailModal compatibility (mapped later if needed)
-                            regularOpeningHours: place.opening_hours ? { weekdayDescriptions: place.opening_hours.weekday_text } : null
-                        };
-                    });
-                    setResults(formatted);
-                } else {
-                    setResults([]);
-                }
-                setLoading(false);
+            const { Place } = await google.maps.importLibrary("places");
+            const { places } = await Place.searchByText({
+                textQuery: queryText,
+                fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos', 'utcOffsetMinutes'],
+                locationBias: virtualLocation ? { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: 1000 } : undefined,
+                maxResultCount: 10,
             });
+            const formatted = await Promise.all(places.map(async (place) => {
+                let photoUrl = null;
+                if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getURI({ maxWidth: 200 });
+                let isOpenStatus = null;
+                try { isOpenStatus = await place.isOpen(); } catch(e) {}
+                return {
+                    id: place.id, name: place.displayName, type: mapGoogleTypeToCategory(place.types), rating: place.rating, priceLevel: place.priceLevel, address: place.formattedAddress, photoUrl, isOpen: isOpenStatus, lat: place.location.lat(), lng: place.location.lng(), regularOpeningHours: place.regularOpeningHours 
+                };
+            }));
+            setResults(formatted);
         } catch(e) { console.error(e); alert("搜尋失敗"); setLoading(false); }
     };
 
@@ -999,7 +988,7 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
        <div className="flex items-center gap-3">
            <div className="flex-1">
               <div className="text-lg font-bold text-stone-800 truncate tracking-tight">{virtualLocation === realLocation ? "📍 我的目前位置" : "🗺️ 自訂地圖位置"}</div>
-              <div className="text-xs text-stone-400 font-mono mt-1 opacity-60">{virtualLocation?.lat.toFixed(4)}, {virtualLocation?.lng.toFixed(4)}</div>
+              <div className="text-xs text-stone-400 font-mono mt-1 opacity-60">{virtualLocation ? `${virtualLocation.lat.toFixed(4)}, ${virtualLocation.lng.toFixed(4)}` : "定位中..."}</div>
            </div>
        </div>
      </div>
@@ -1103,7 +1092,13 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                                     <div className="flex items-center gap-2 mt-1 text-xs">
                                         <span className="text-stone-400 bg-stone-50 px-1.5 py-0.5 rounded truncate max-w-[80px]">{r.type}</span>
                                         <span className="text-orange-500 font-bold flex items-center gap-0.5"><MapPin size={10}/> {r.distance}km</span>
-                                        {r.isOpen ? <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold">營業中</span> : <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">休息</span>}
+                                        {/* 修改營業狀態顯示邏輯 */}
+                                        {r.isOpen === true ? 
+                                            <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold">營業中</span> 
+                                            : r.isOpen === false ?
+                                            <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">休息</span>
+                                            : null
+                                        }
                                     </div>
                                 </div>
                                 
