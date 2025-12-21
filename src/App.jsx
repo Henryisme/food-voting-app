@@ -338,6 +338,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             // Calculate winner
             // Rotation aligns 0 degrees at top.
             const normalizedRotation = totalRotation % 360;
+            // The slice currently at 0deg is the one that was at (360 - normalizedRotation) originally
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
             const winningIndex = Math.floor(targetAngle / sliceAngle);
@@ -708,7 +709,7 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
                 };
             }));
             setResults(formatted);
-        } catch(e) { console.error(e); alert("搜尋失敗"); } finally { setLoading(false); }
+        } catch(e) { console.error(e); alert("搜尋失敗"); setLoading(false); }
     };
 
     return (
@@ -975,7 +976,7 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
              <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={24}/></div>
          </div>
-         <h1 className="text-3xl font-black text-stone-800 mb-2">揪團大廳</h1>
+         h1 className="text-3xl font-black text-stone-800 mb-2">揪團大廳</h1>
          <p className="text-stone-400 text-sm mb-8">管理你的所有美食房間</p>
 
          <div className="w-full max-w-sm space-y-6">
@@ -1680,7 +1681,7 @@ export default function App() {
                     id: place.id, 
                     name: place.displayName, 
                     type: mapGoogleTypeToCategory(place.types), 
-                    rating: place.rating, 
+                    rating: place.rating,
                     userRatingsTotal: place.userRatingCount, 
                     priceLevel: place.priceLevel, 
                     isOpen: isOpenStatus,
