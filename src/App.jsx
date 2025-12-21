@@ -213,8 +213,7 @@ const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   </div>
 );
 
-// --- Decision Maker Modal (Updated with SVG for better visuals) ---
-// This component was missing in the previous context, re-adding it now.
+// --- Decision Maker Modal (Restored) ---
 const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); // 'wheel' or 'ladder'
     const [result, setResult] = useState(null);
@@ -238,10 +237,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         setWheelRotation(prev => prev + totalRotation);
 
         setTimeout(() => {
-            // Calculate winner
-            // Rotation aligns 0 degrees at top.
             const normalizedRotation = totalRotation % 360;
-            // The slice currently at 0deg is the one that was at (360 - normalizedRotation) originally
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
             const winningIndex = Math.floor(targetAngle / sliceAngle);
