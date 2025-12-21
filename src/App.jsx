@@ -213,7 +213,7 @@ const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   </div>
 );
 
-// --- RealMapSelector (Fixed potential crash on null location) ---
+// --- RealMapSelector ---
 const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
   const mapRef = useRef(null);
   // Default to Taipei if location is null to prevent Map crash
@@ -311,7 +311,7 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   );
 };
 
-// --- Decision Maker Modal (Updated with SVG for better visuals) ---
+// --- Decision Maker Modal ---
 const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); // 'wheel' or 'ladder'
     const [result, setResult] = useState(null);
@@ -1624,7 +1624,7 @@ export default function App() {
             textQuery: queryText,
             fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos', 'businessStatus', 'utcOffsetMinutes'], // Added utcOffsetMinutes
             locationBias: { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: distFilter },
-            openNow: openNowFilter, // Filter by open now if in time slot
+            isOpen: openNowFilter, // Filter by open now if in time slot
             maxResultCount: 20 // API limit per page for New API, pagination handling requires token logic which is complex in single file. Sticking to 20 high quality results with hours.
         });
 
@@ -1680,7 +1680,7 @@ export default function App() {
                     id: place.id, 
                     name: place.displayName, 
                     type: mapGoogleTypeToCategory(place.types), 
-                    rating: place.rating,
+                    rating: place.rating, 
                     userRatingsTotal: place.userRatingCount, 
                     priceLevel: place.priceLevel, 
                     isOpen: isOpenStatus,
