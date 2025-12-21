@@ -213,7 +213,105 @@ const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   </div>
 );
 
-// --- Decision Maker Modal (Restored) ---
+// --- RealMapSelector (Fixed potential crash on null location) ---
+const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
+  const mapRef = useRef(null);
+  // Default to Taipei if location is null to prevent Map crash
+  const safeLocation = initialLocation || { lat: 25.0330, lng: 121.5654 };
+  const [selectedLoc, setSelectedLoc] = useState(safeLocation);
+  const [mapError, setMapError] = useState("");
+  const [addressInput, setAddressInput] = useState("");
+  const [foundPlaceName, setFoundPlaceName] = useState(""); 
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  
+  useEffect(() => {
+    if (!window.google || !window.google.maps) {
+        setMapError("Google Maps API 未載入，請確認 API Key。");
+        return;
+    }
+    if (!mapRef.current) return;
+
+    try {
+      const map = new window.google.maps.Map(mapRef.current, { center: safeLocation, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
+      const marker = new window.google.maps.Marker({ position: safeLocation, map: map, draggable: true, animation: window.google.maps.Animation.DROP, title: "拖曳我來修改位置" });
+      
+      mapInstanceRef.current = map;
+      markerRef.current = marker;
+
+      map.addListener("click", (e) => { 
+          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
+          marker.setPosition(newLoc); 
+          setSelectedLoc(newLoc); 
+          setFoundPlaceName("地圖選取位置"); 
+          map.panTo(newLoc); 
+      });
+      marker.addListener("dragend", (e) => { 
+          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
+          setSelectedLoc(newLoc); 
+          setFoundPlaceName("地圖選取位置"); 
+          map.panTo(newLoc); 
+      });
+    } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
+  }, []);
+
+  const handleAddressSearch = () => {
+      if (!window.google || !window.google.maps || !addressInput.trim()) return;
+      const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
+      const request = { query: addressInput, fields: ['name', 'geometry', 'formatted_address'] };
+
+      service.findPlaceFromQuery(request, (results, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+              const place = results[0];
+              const location = place.geometry.location;
+              const newLoc = { lat: location.lat(), lng: location.lng() };
+              setSelectedLoc(newLoc);
+              setFoundPlaceName(place.name || place.formatted_address); 
+              if (mapInstanceRef.current) { mapInstanceRef.current.panTo(newLoc); mapInstanceRef.current.setZoom(16); }
+              if (markerRef.current) markerRef.current.setPosition(newLoc);
+          } else {
+              const geocoder = new window.google.maps.Geocoder();
+              geocoder.geocode({ address: addressInput }, (results, status) => {
+                  if (status === 'OK' && results[0]) {
+                      const location = results[0].geometry.location;
+                      const newLoc = { lat: location.lat(), lng: location.lng() };
+                      setSelectedLoc(newLoc);
+                      setFoundPlaceName(results[0].formatted_address);
+                      if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
+                      if (markerRef.current) markerRef.current.setPosition(newLoc);
+                  } else { alert('找不到該地點，請嘗試更具體的名稱或地址。'); }
+              });
+          }
+      });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-white flex flex-col animate-in fade-in font-rounded">
+      <div className="p-4 bg-white/80 backdrop-blur-md border-b flex justify-between items-center shadow-sm z-10 absolute top-0 w-full">
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
+        <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
+      </div>
+      <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-40">
+        {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
+        {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
+      </div>
+      <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
+         <div className="flex gap-2">
+             <input type="text" value={addressInput} onChange={(e) => setAddressInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()} placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500" />
+             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0">搜尋</button>
+         </div>
+         {foundPlaceName && (<div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in"><Check size={14} /><span>定位至: {foundPlaceName}</span></div>)}
+         <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
+         <div className="flex gap-2">
+            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
+            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認此地點</button>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Decision Maker Modal (Updated with SVG for better visuals) ---
 const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); // 'wheel' or 'ladder'
     const [result, setResult] = useState(null);
@@ -237,6 +335,8 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         setWheelRotation(prev => prev + totalRotation);
 
         setTimeout(() => {
+            // Calculate winner
+            // Rotation aligns 0 degrees at top.
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
@@ -555,103 +655,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             </div>
         </div>
     );
-};
-
-// ... RealMapSelector and other components ...
-
-const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
-  const mapRef = useRef(null);
-  const [selectedLoc, setSelectedLoc] = useState(initialLocation);
-  const [mapError, setMapError] = useState("");
-  const [addressInput, setAddressInput] = useState("");
-  const [foundPlaceName, setFoundPlaceName] = useState(""); 
-  const mapInstanceRef = useRef(null);
-  const markerRef = useRef(null);
-  
-  useEffect(() => {
-    if (!window.google || !window.google.maps) {
-        setMapError("Google Maps API 未載入，請確認 API Key。");
-        return;
-    }
-    if (!mapRef.current) return;
-
-    try {
-      const map = new window.google.maps.Map(mapRef.current, { center: initialLocation, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
-      const marker = new window.google.maps.Marker({ position: initialLocation, map: map, draggable: true, animation: window.google.maps.Animation.DROP, title: "拖曳我來修改位置" });
-      
-      mapInstanceRef.current = map;
-      markerRef.current = marker;
-
-      map.addListener("click", (e) => { 
-          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
-          marker.setPosition(newLoc); 
-          setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); 
-          map.panTo(newLoc); 
-      });
-      marker.addListener("dragend", (e) => { 
-          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
-          setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); 
-          map.panTo(newLoc); 
-      });
-    } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
-  }, []);
-
-  const handleAddressSearch = () => {
-      if (!window.google || !window.google.maps || !addressInput.trim()) return;
-      const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
-      const request = { query: addressInput, fields: ['name', 'geometry', 'formatted_address'] };
-
-      service.findPlaceFromQuery(request, (results, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
-              const place = results[0];
-              const location = place.geometry.location;
-              const newLoc = { lat: location.lat(), lng: location.lng() };
-              setSelectedLoc(newLoc);
-              setFoundPlaceName(place.name || place.formatted_address); 
-              if (mapInstanceRef.current) { mapInstanceRef.current.panTo(newLoc); mapInstanceRef.current.setZoom(16); }
-              if (markerRef.current) markerRef.current.setPosition(newLoc);
-          } else {
-              const geocoder = new window.google.maps.Geocoder();
-              geocoder.geocode({ address: addressInput }, (results, status) => {
-                  if (status === 'OK' && results[0]) {
-                      const location = results[0].geometry.location;
-                      const newLoc = { lat: location.lat(), lng: location.lng() };
-                      setSelectedLoc(newLoc);
-                      setFoundPlaceName(results[0].formatted_address);
-                      if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
-                      if (markerRef.current) markerRef.current.setPosition(newLoc);
-                  } else { alert('找不到該地點，請嘗試更具體的名稱或地址。'); }
-              });
-          }
-      });
-  };
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-white flex flex-col animate-in fade-in font-rounded">
-      <div className="p-4 bg-white/80 backdrop-blur-md border-b flex justify-between items-center shadow-sm z-10 absolute top-0 w-full">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
-        <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
-      </div>
-      <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-40">
-        {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
-        {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
-      </div>
-      <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
-         <div className="flex gap-2">
-             <input type="text" value={addressInput} onChange={(e) => setAddressInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()} placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500" />
-             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0">搜尋</button>
-         </div>
-         {foundPlaceName && (<div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in"><Check size={14} /><span>定位至: {foundPlaceName}</span></div>)}
-         <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
-         <div className="flex gap-2">
-            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
-            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認此地點</button>
-         </div>
-      </div>
-    </div>
-  );
 };
 
 const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
