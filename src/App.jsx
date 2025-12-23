@@ -11,6 +11,12 @@ import {
 // --- Firebase Imports ---
 import { initializeApp } from "firebase/app";
 import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signInWithCustomToken
+} from "firebase/auth";
+import { 
   getFirestore, collection, addDoc, doc, onSnapshot, 
   updateDoc, arrayUnion, query, where, getDocs, orderBy, deleteDoc, serverTimestamp, getDoc, setDoc
 } from "firebase/firestore";
@@ -18,35 +24,18 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
+// 請在此填入您的 API Key
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
-     
+      
+      
 
 // 🔥 Firebase 設定
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
-  authDomain: "foodvotingapp.firebaseapp.com",
-  projectId: "foodvotingapp",
-  storageBucket: "foodvotingapp.firebasestorage.app",
-  messagingSenderId: "765035779856",
-  appId: "1:765035779856:web:fd38c7b2e88f4a44f3b795",
-  measurementId: "G-XC9G7C62GD"
-};
-
-// --- 初始化 Firebase ---
-let db = null;
-try {
-  if (FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.length > 10) {
-    const app = initializeApp(FIREBASE_CONFIG);
-    db = getFirestore(app);
-    console.log("🔥 Firebase 已嘗試連線...");
-  } else {
-    console.log("⚠️ Firebase 設定為空，將使用單機模擬模式");
-  }
-} catch (error) {
-  console.error("Firebase 初始化失敗", error);
-  db = null;
-}
+const FIREBASE_CONFIG = JSON.parse(__firebase_config);
+const app = initializeApp(FIREBASE_CONFIG);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // --- 常數定義 ---
 const DEFAULT_CATEGORIES = ['全部', '台式', '日式', '韓式', '美式', '義式', '泰式', '火鍋', '燒肉', '早午餐', '甜點', '素食', '小吃', '其他'];
@@ -70,19 +59,15 @@ const mapGoogleTypeToCategory = (types) => {
   return '其他';
 };
 
-// 轉換 Google Price Level 字串為數字
 const convertPriceLevel = (level) => {
     if (typeof level === 'number') return level;
     if (!level) return 0;
-    
-    // 處理 Google Maps New Places API 的 Enum 字串
     if (level === 'PRICE_LEVEL_FREE') return 0;
     if (level === 'PRICE_LEVEL_INEXPENSIVE') return 1;
     if (level === 'PRICE_LEVEL_MODERATE') return 2;
     if (level === 'PRICE_LEVEL_EXPENSIVE') return 3;
     if (level === 'PRICE_LEVEL_VERY_EXPENSIVE') return 4;
-    
-    return 0; // 預設為無標示
+    return 0; 
 };
 
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -135,7 +120,7 @@ const PriceDisplay = ({ level }) => {
     <div className="flex text-emerald-600 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
       {numLevel > 0 
         ? [...Array(numLevel)].map((_, i) => <span key={i}>$</span>) 
-        : <span>$</span> // 預設顯示一個 $ (平價/未知)
+        : <span>$</span> 
       }
     </div>
   );
@@ -189,7 +174,7 @@ const calculateTravelTime = (meters) => {
   return { walk, bike, car };
 };
 
-// --- 子組件定義 (全部移到 App 前面) ---
+// --- 子組件定義 ---
 
 const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar items-center">
@@ -421,9 +406,9 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
             <g key={index}>
                 <path d={pathData} fill={WHEEL_COLORS[index % WHEEL_COLORS.length]} stroke="white" strokeWidth="0.5" />
                 <g transform={`rotate(${midAngle}, 50, 50) translate(0, -35)`}>
-                     <text x="50" y="50" fontSize="4" fontWeight="bold" fill="#333" textAnchor="middle" transform="rotate(90, 50, 50)" style={{pointerEvents: 'none'}}>
-                        {candidates[index].name.length > 6 ? candidates[index].name.substring(0,6)+'..' : candidates[index].name}
-                     </text>
+                      <text x="50" y="50" fontSize="4" fontWeight="bold" fill="#333" textAnchor="middle" transform="rotate(90, 50, 50)" style={{pointerEvents: 'none'}}>
+                         {candidates[index].name.length > 6 ? candidates[index].name.substring(0,6)+'..' : candidates[index].name}
+                      </text>
                 </g>
             </g>
         );
@@ -461,7 +446,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                             <div className="flex justify-between mb-4 relative z-10">
                                 {candidates.map((_, i) => (
                                     <button key={i} onClick={() => startLadder(i)} disabled={isSpinning} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm transition-all relative ${selectedLadderStart === i ? 'bg-orange-500 text-white scale-110 ring-2 ring-orange-200' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'} ${isSpinning && selectedLadderStart !== i ? 'opacity-30' : ''}`}>
-                                        {i+1}
+                                            {i+1}
                                     </button>
                                 ))}
                             </div>
@@ -488,7 +473,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                             <div className="flex justify-between relative mt-auto">
                                 {candidates.map((c, i) => (
                                     <div key={i} className={`w-10 text-[10px] text-center truncate font-bold leading-tight transition-all absolute top-0 transform -translate-x-1/2 ${ladderResultIndex === i ? 'text-red-600 scale-110 z-10 bg-white shadow-sm p-1 rounded border border-red-100' : 'text-stone-400'}`} style={{ left: `${(i / (candidates.length - 1)) * 100}%` }}>
-                                        {c.name}
+                                            {c.name}
                                     </div>
                                 ))}
                             </div>
@@ -616,7 +601,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   const handleRenameRoom = async () => {
       const newName = prompt("請輸入新的房間名稱：", room.name);
       if (newName && newName.trim() && db) {
-          try { await updateDoc(doc(db, "rooms", room.id), { name: newName.trim() }); setRoom(prev => ({ ...prev, name: newName.trim() })); } catch (e) { alert("改名失敗"); }
+          try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id), { name: newName.trim() }); setRoom(prev => ({ ...prev, name: newName.trim() })); } catch (e) { alert("改名失敗"); }
       }
   };
 
@@ -626,7 +611,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
       const newCat = prompt("請輸入新的分類名稱：", currentCat);
       if (newCat && newCat.trim() && db) {
           try {
-              const ref = doc(db, "rooms", room.id, "shared_restaurants", itemId);
+              const ref = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", itemId);
               await updateDoc(ref, { type: newCat.trim() });
           } catch(e) { console.error(e); }
       }
@@ -635,15 +620,15 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   const sendMessage = async (text) => {
       if (!text.trim()) return;
       const msgData = { sender: userProfile.name, avatar: getAvatarUrl(), text: text, type: 'text', createdAt: new Date() };
-      if (db && room) await addDoc(collection(db, "rooms", room.id, "messages"), msgData); else setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
+      if (db && room) await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages"), msgData); else setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
   };
 
   const voteForMessage = async (msgId, currentVoters, currentVotes) => {
       if (currentVoters && currentVoters.includes(userProfile.name)) return;
-      if (db && room) { const msgRef = doc(db, "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votes: (currentVotes || 0) + 1, voters: arrayUnion(userProfile.name) }); }
+      if (db && room) { const msgRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votes: (currentVotes || 0) + 1, voters: arrayUnion(userProfile.name) }); }
   };
 
-  const enableVoting = async (msgId) => { if (db && room) { const msgRef = doc(db, "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votingEnabled: true }); } };
+  const enableVoting = async (msgId) => { if (db && room) { const msgRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votingEnabled: true }); } };
 
   const copyInviteLink = () => { if (!room) return; const url = `${window.location.origin}${window.location.pathname}?room=${room.code}`; if (navigator.share) navigator.share({ title: '加入美食團', text: `加入代碼：${room.code}`, url }).catch(console.error); else { navigator.clipboard.writeText(url); alert("連結已複製！"); } };
 
@@ -791,7 +776,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                   <span className="text-[10px] font-bold text-stone-400">我的評分</span>
                                   {item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}
                                 </div>
-                              
+                               
                                 <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
                                     {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
                                         <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
@@ -1092,7 +1077,6 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                                     <div className="flex items-center gap-2 mt-1 text-xs">
                                         <span className="text-stone-400 bg-stone-50 px-1.5 py-0.5 rounded truncate max-w-[80px]">{r.type}</span>
                                         <span className="text-orange-500 font-bold flex items-center gap-0.5"><MapPin size={10}/> {r.distance}km</span>
-                                        {/* 修改營業狀態顯示邏輯 */}
                                         {r.isOpen === true ? 
                                             <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold">營業中</span> 
                                             : r.isOpen === false ?
@@ -1102,7 +1086,6 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                                     </div>
                                 </div>
                                 
-                                {/* --- 顯示今日營業時間 UI --- */}
                                 {r.todayHours && (
                                     <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-stone-500 bg-stone-50 px-2 py-1 rounded-md border border-stone-100 w-fit">
                                         <Clock size={10} className="text-stone-400"/>
@@ -1287,9 +1270,23 @@ export default function App() {
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [sharedRestaurants, setSharedRestaurants] = useState([]); 
+  const [firebaseUser, setFirebaseUser] = useState(null);
   
   // 新增：排序狀態
   const [sortBy, setSortBy] = useState('default');
+
+  // Firebase Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    return onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+  }, []);
 
   useEffect(() => {
     // Geo Init
@@ -1326,47 +1323,47 @@ export default function App() {
 
   // Load My Rooms
   useEffect(() => {
-      if(db && userProfile.name) {
-          const q = query(collection(db, "rooms"), where("members", "array-contains", userProfile.name)); 
+      if(db && userProfile.name && firebaseUser) {
+          const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms"), where("members", "array-contains", userProfile.name)); 
           const unsubscribe = onSnapshot(q, (snapshot) => {
               const rooms = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
               rooms.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); 
               setMyRooms(rooms);
-          });
+          }, (error) => console.error("Room fetch error:", error));
           return () => unsubscribe();
       }
-  }, [userProfile.name]);
+  }, [userProfile.name, firebaseUser]);
 
   // Load Shared Restaurants for Current Room
   useEffect(() => {
-      if (!db || !room?.id) return;
-      const q = query(collection(db, "rooms", room.id, "shared_restaurants")); 
+      if (!db || !room?.id || !firebaseUser) return;
+      const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants")); 
       const unsubscribe = onSnapshot(q, (snapshot) => {
           const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
           list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); 
           setSharedRestaurants(list);
-      });
+      }, (error) => console.error("Shared restaurants error:", error));
       return () => unsubscribe();
-  }, [room?.id]);
+  }, [room?.id, firebaseUser]);
 
-  // Load Messages for Current Room (修復訊息不顯示問題)
+  // Load Messages for Current Room
   useEffect(() => {
-      if (!db || !room?.id) {
+      if (!db || !room?.id || !firebaseUser) {
           if(!room) setMessages([]); // 離開房間清空訊息
           return;
       }
-      const q = query(collection(db, "rooms", room.id, "messages"), orderBy("createdAt", "asc")); 
+      const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages"), orderBy("createdAt", "asc")); 
       const unsubscribe = onSnapshot(q, (snapshot) => {
           const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
           setMessages(msgs);
-      });
+      }, (error) => console.error("Messages error:", error));
       return () => unsubscribe();
-  }, [room?.id]);
+  }, [room?.id, firebaseUser]);
 
   // Define updateSharedItemStatus here at App level so it can be passed down
   const updateSharedItemStatus = async (itemId, type, value) => {
-      if (!db || !room?.id) return;
-      const ref = doc(db, "rooms", room.id, "shared_restaurants", itemId);
+      if (!db || !room?.id || !firebaseUser) return;
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", itemId);
       try { 
           if (type === 'rating') await updateDoc(ref, { [`ratings.${userProfile.name}`]: value }); 
           else if (type === 'eaten') await updateDoc(ref, { [`eatenStatus.${userProfile.name}`]: value }); 
@@ -1381,7 +1378,7 @@ export default function App() {
       setActiveTab('social');
       return;
     }
-    if (db) {
+    if (db && firebaseUser) {
       try {
         let simpleOpeningHours = null;
         if (restaurant.regularOpeningHours && restaurant.regularOpeningHours.weekdayDescriptions) {
@@ -1390,7 +1387,7 @@ export default function App() {
              };
         }
 
-        const docRef = doc(db, "rooms", room.id, "shared_restaurants", restaurant.id);
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", restaurant.id);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
@@ -1422,15 +1419,55 @@ export default function App() {
         alert("加入失敗，請稍後再試。(" + e.message + ")");
       }
     } else {
-      alert("單機模式暫不支援共同清單功能");
+      alert("單機模式或未登入暫不支援共同清單功能");
+    }
+  };
+
+  const addRestaurantToRoom = async (targetRoomId, restaurant) => {
+    if (!db || !firebaseUser) return;
+    try {
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", targetRoomId, "shared_restaurants", restaurant.id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+             alert(`「${restaurant.name}」已經在該房間的清單中囉！`);
+             return;
+        }
+
+        let simpleOpeningHours = null;
+        if (restaurant.regularOpeningHours && restaurant.regularOpeningHours.weekdayDescriptions) {
+           simpleOpeningHours = { weekdayDescriptions: restaurant.regularOpeningHours.weekdayDescriptions };
+        }
+
+        await setDoc(docRef, {
+            name: restaurant.name || "未命名餐廳",
+            address: restaurant.address || "",
+            addedBy: userProfile.name,
+            type: restaurant.customCategory || restaurant.type || "美食",
+            photoUrl: restaurant.photoUrl || null,
+            ratings: {},
+            eatenStatus: {},
+            createdAt: serverTimestamp(),
+            id: restaurant.id || "unknown_id",
+            rating: restaurant.rating || 0,
+            userRatingsTotal: restaurant.userRatingsTotal || 0,
+            priceLevel: restaurant.priceLevel || 0,
+            isOpen: restaurant.isOpen === true,
+            lat: typeof restaurant.lat === 'function' ? restaurant.lat() : (restaurant.lat || 0),
+            lng: typeof restaurant.lng === 'function' ? restaurant.lng() : (restaurant.lng || 0),
+            regularOpeningHours: simpleOpeningHours
+        });
+        alert("已分享至房間！");
+    } catch(e) {
+        console.error(e);
+        alert("分享失敗");
     }
   };
 
   const removeFromSharedList = async (restaurant) => {
-     if (!db || !room) return;
+     if (!db || !room || !firebaseUser) return;
      if (!confirm("確定要從共同清單中移除這間餐廳嗎？")) return;
      try {
-         await deleteDoc(doc(db, "rooms", room.id, "shared_restaurants", restaurant.id));
+         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", restaurant.id));
      } catch (e) {
          console.error("Remove Error:", e);
          alert("移除失敗");
@@ -1449,11 +1486,9 @@ export default function App() {
               sorted.sort((a, b) => {
                   const pA = a.priceLevel || 0;
                   const pB = b.priceLevel || 0;
-                  // 0 (未知) 視為較便宜的優先? 或者排最後? 這裡設為 0 最優先
                   return pA - pB; 
               });
           }
-          // 'default' 通常保留原本搜尋結果的排序 (關聯性)，或依照距離
           setRestaurants(sorted);
       }
   }, [sortBy]);
@@ -1469,7 +1504,6 @@ export default function App() {
     isSearchingRef.current = true;
 
     try {
-        // Use Legacy PlacesService for consistent results and >20 pagination support
         const service = new window.google.maps.places.PlacesService(document.createElement('div'));
         
         let queryText = "restaurant";
@@ -1526,26 +1560,18 @@ export default function App() {
                 let photoUrl = null;
                 if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getUrl({ maxWidth: 400 });
                 
-                // Legacy API uses opening_hours.open_now
                 let isOpenStatus = place.opening_hours ? place.opening_hours.open_now : null;
                 
-                // --- Hours Extraction (Legacy API uses opening_hours.weekday_text) ---
                 let todayHours = null;
-                // For compatibility with DetailModal, we construct a mock "regularOpeningHours" object
                 let regularOpeningHours = null;
 
                 if (place.opening_hours && place.opening_hours.weekday_text) {
                     regularOpeningHours = { weekdayDescriptions: place.opening_hours.weekday_text };
                     
                     const now = new Date();
-                    const dayIndex = now.getDay(); // 0 (Sun)
-                    
-                    // Simple day matching for Legacy API weekday_text (usually "Monday: 9:00 AM – 5:00 PM")
-                    // Note: Legacy API returns days in order 0-6? No, usually localized text.
-                    // Let's look for today's day name.
                     const dayNames = [
                         new Intl.DateTimeFormat('zh-TW', { weekday: 'long' }).format(now),
-                        "週" + "日一二三四五六"[dayIndex],
+                        "週" + "日一二三四五六"[now.getDay()],
                         new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(now),
                     ];
                     
@@ -1556,7 +1582,7 @@ export default function App() {
                     if (todayDesc) {
                          let timePart = todayDesc.split(/[:：]\s+/).slice(1).join(":").trim();
                          if(!timePart) {
-                             timePart = todayDesc; // Fallback
+                             timePart = todayDesc;
                              dayNames.forEach(name => { timePart = timePart.replace(name, '').trim(); });
                          }
                          todayHours = timePart;
@@ -1577,7 +1603,7 @@ export default function App() {
                     distance: calculateDistance(virtualLocation.lat, virtualLocation.lng, place.geometry.location.lat(), place.geometry.location.lng()),
                     address: place.formatted_address, 
                     photoUrl: photoUrl,
-                    regularOpeningHours: regularOpeningHours // Pass this for DetailModal
+                    regularOpeningHours: regularOpeningHours 
                 };
             });
 
@@ -1635,16 +1661,16 @@ export default function App() {
   // Join Room logic
   const onJoinRoom = async (code) => {
       if (code.length !== 4) return alert("請輸入 4 位數代碼");
-      if (db) {
+      if (db && firebaseUser) {
         try {
-          const q = query(collection(db, "rooms"), where("code", "==", code));
+          const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms"), where("code", "==", code));
           const querySnapshot = await getDocs(q);
           if (!querySnapshot.empty) {
             const docData = querySnapshot.docs[0];
             const roomData = { id: docData.id, ...docData.data() };
             if(!roomData.members.includes(userProfile.name)) {
-                await updateDoc(doc(db, "rooms", docData.id), { members: arrayUnion(userProfile.name) });
-                await addDoc(collection(db, "rooms", docData.id, "messages"), {
+                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", docData.id), { members: arrayUnion(userProfile.name) });
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms", docData.id, "messages"), {
                     sender: 'System', text: `${userProfile.name} 加入了房間！`, type: 'system', createdAt: new Date()
                 });
             }
@@ -1662,12 +1688,12 @@ export default function App() {
   const onCreateRoom = async () => {
       const code = Math.floor(1000 + Math.random() * 9000).toString();
       const roomName = `${userProfile.name} 的美食團`;
-      if (db) {
+      if (db && firebaseUser) {
         try {
-          const roomRef = await addDoc(collection(db, "rooms"), {
+          const roomRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms"), {
             code: code, name: roomName, createdAt: new Date(), members: [userProfile.name]
           });
-          await addDoc(collection(db, "rooms", roomRef.id, "messages"), {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms", roomRef.id, "messages"), {
             sender: 'System', text: `歡迎來到「${roomName}」！代碼：${code}`, type: 'system', createdAt: new Date()
           });
           setRoom({ id: roomRef.id, code, name: roomName });
@@ -1684,9 +1710,9 @@ export default function App() {
 
   const onDeleteRoom = async (roomId) => {
       if (!confirm("確定要刪除這個房間嗎？\n注意：這將會移除所有人的聊天記錄與清單。")) return;
-      if (db) {
+      if (db && firebaseUser) {
           try {
-              await deleteDoc(doc(db, "rooms", roomId));
+              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", roomId));
           } catch (e) {
               console.error("刪除失敗", e);
               alert("刪除失敗");
@@ -1696,7 +1722,6 @@ export default function App() {
       }
   };
 
-  // --- 補上遺失的 handleAiGroupAnalysis 函式 ---
   const handleAiGroupAnalysis = async () => {
     if (shortlist.length === 0) {
       alert("候選清單是空的，無法進行分析喔！");
@@ -1704,7 +1729,7 @@ export default function App() {
     }
 
     setIsAiAnalyzing(true);
-    setAiAnalysis(""); // 先清空舊的結果
+    setAiAnalysis(""); 
 
     try {
       // 準備給 AI 的提示詞
@@ -1783,7 +1808,6 @@ export default function App() {
           />
         )}
         
-        {/* Updated Logic: Social Tab now toggles between Lobby and Room view */}
         {activeTab === 'social' && (
             room ? (
                 <SocialView 
@@ -1815,7 +1839,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Hide main NavBar when in a Room to allow focus on chat/list */}
       {!room && <NavBar activeTab={activeTab} setActiveTab={setActiveTab} />}
       
       <DetailModal 
