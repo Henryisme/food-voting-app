@@ -26,11 +26,11 @@ import {
 // ==========================================
 // 請在此填入您的 API Key
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";           
-      
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
 
-// 🔥 Firebase 設定
-const firebaseConfig = {
+// ⚠️ 請在此填入您的 Firebase Config (如果沒有自動讀取到環境變數)
+// 請將您的 Firebase 設定物件直接貼在下方
+const MANUAL_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
   authDomain: "foodvotingapp.firebaseapp.com",
   projectId: "foodvotingapp",
@@ -40,15 +40,50 @@ const firebaseConfig = {
   measurementId: "G-XC9G7C62GD"
 };
 
+// 🔥 Firebase 設定與初始化 (包含錯誤處理)
+let app, auth, db;
+let appId = 'default-app-id';
+let firebaseErrorMsg = null;
+
+try {
+  let config = null;
+  // 1. 嘗試讀取環境變數 (Canvas 環境自動注入)
+  if (typeof __firebase_config !== 'undefined') {
+    try {
+        config = JSON.parse(__firebase_config);
+    } catch (e) {
+        console.warn("解析環境變數失敗，嘗試使用手動設定");
+    }
+  }
+
+  // 2. 如果環境變數沒有，則使用手動設定
+  if ((!config || !config.apiKey) && MANUAL_FIREBASE_CONFIG.apiKey) {
+      config = MANUAL_FIREBASE_CONFIG;
+  }
+
+  if (config && config.apiKey) {
+    app = initializeApp(config);
+    auth = getAuth(app);
+    db = getFirestore(app);
+    if (typeof __app_id !== 'undefined') {
+        appId = __app_id;
+    }
+  } else {
+    firebaseErrorMsg = "找不到有效的 Firebase 設定。請確認環境變數或填寫 MANUAL_FIREBASE_CONFIG。";
+    console.warn("Firebase config not found.");
+  }
+} catch (error) {
+  firebaseErrorMsg = `Firebase 初始化失敗: ${error.message}`;
+  console.error("Firebase initialization failed:", error);
+}
+
 // --- 常數定義 ---
 const DEFAULT_CATEGORIES = ['全部', '台式', '日式', '韓式', '美式', '義式', '泰式', '火鍋', '燒肉', '早午餐', '甜點', '素食', '小吃', '其他'];
 
 // --- 工具函數 ---
-
 const mapGoogleTypeToCategory = (types) => {
   if (!types || types.length === 0) return '其他';
   const t = Array.isArray(types) ? types.join(' ').toLowerCase() : '';
-  
   if (t.includes('japanese') || t.includes('sushi') || t.includes('ramen')) return '日式';
   if (t.includes('korean')) return '韓式';
   if (t.includes('taiwanese') || t.includes('chinese')) return '台式';
@@ -121,10 +156,7 @@ const PriceDisplay = ({ level }) => {
   const numLevel = convertPriceLevel(level);
   return (
     <div className="flex text-emerald-600 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
-      {numLevel > 0 
-        ? [...Array(numLevel)].map((_, i) => <span key={i}>$</span>) 
-        : <span>$</span> 
-      }
+      {numLevel > 0 ? [...Array(numLevel)].map((_, i) => <span key={i}>$</span>) : <span>$</span>}
     </div>
   );
 };
@@ -138,27 +170,19 @@ const StarRating = ({ rating }) => (
 
 const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
   const [hoverValue, setHoverValue] = useState(null);
-
   const handleMouseMove = (e, index) => {
     if (readOnly) return;
     const { left, width } = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - left) / width;
     setHoverValue(index + (percent > 0.5 ? 1 : 0.5));
   };
-
   const displayValue = hoverValue !== null ? hoverValue : value;
-
   return (
     <div className="flex" onMouseLeave={() => setHoverValue(null)}>
       {[0, 1, 2, 3, 4].map((index) => {
         const fill = Math.max(0, Math.min(1, displayValue - index)); 
         return (
-          <div
-            key={index}
-            className={`relative w-6 h-6 ${readOnly ? '' : 'cursor-pointer'}`}
-            onMouseMove={(e) => handleMouseMove(e, index)}
-            onClick={() => !readOnly && onChange(hoverValue)}
-          >
+          <div key={index} className={`relative w-6 h-6 ${readOnly ? '' : 'cursor-pointer'}`} onMouseMove={(e) => handleMouseMove(e, index)} onClick={() => !readOnly && onChange(hoverValue)}>
             <Star size={18} className="text-stone-300 absolute top-0 left-0" />
             <div className="absolute top-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
                <Star size={18} className="text-yellow-400 fill-yellow-400" />
@@ -177,20 +201,12 @@ const calculateTravelTime = (meters) => {
   return { walk, bike, car };
 };
 
-// --- 子組件定義 ---
+// --- 元件定義 (依照順序排列) ---
 
 const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar items-center">
     {categories.map(cat => (
-      <button
-        key={cat}
-        onClick={() => onSelect(cat)}
-        className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm border ${
-          selected === cat 
-            ? 'bg-orange-500 text-white border-orange-500 shadow-orange-200' 
-            : 'bg-white text-stone-500 border-stone-200 hover:bg-stone-50'
-        }`}
-      >
+      <button key={cat} onClick={() => onSelect(cat)} className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm border ${selected === cat ? 'bg-orange-500 text-white border-orange-500 shadow-orange-200' : 'bg-white text-stone-500 border-stone-200 hover:bg-stone-50'}`}>
         {cat}
       </button>
     ))}
@@ -218,27 +234,13 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
         return;
     }
     if (!mapRef.current) return;
-
     try {
       const map = new window.google.maps.Map(mapRef.current, { center: safeLocation, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
       const marker = new window.google.maps.Marker({ position: safeLocation, map: map, draggable: true, animation: window.google.maps.Animation.DROP, title: "拖曳我來修改位置" });
-      
       mapInstanceRef.current = map;
       markerRef.current = marker;
-
-      map.addListener("click", (e) => { 
-          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
-          marker.setPosition(newLoc); 
-          setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); 
-          map.panTo(newLoc); 
-      });
-      marker.addListener("dragend", (e) => { 
-          const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; 
-          setSelectedLoc(newLoc); 
-          setFoundPlaceName("地圖選取位置"); 
-          map.panTo(newLoc); 
-      });
+      map.addListener("click", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; marker.setPosition(newLoc); setSelectedLoc(newLoc); setFoundPlaceName("地圖選取位置"); map.panTo(newLoc); });
+      marker.addListener("dragend", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; setSelectedLoc(newLoc); setFoundPlaceName("地圖選取位置"); map.panTo(newLoc); });
     } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
   }, []);
 
@@ -246,7 +248,6 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
       if (!window.google || !window.google.maps || !addressInput.trim()) return;
       const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
       const request = { query: addressInput, fields: ['name', 'geometry', 'formatted_address'] };
-
       service.findPlaceFromQuery(request, (results, status) => {
           if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
               const place = results[0];
@@ -302,8 +303,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
     const [mode, setMode] = useState('wheel'); 
     const [result, setResult] = useState(null);
     const [isSpinning, setIsSpinning] = useState(false);
-    
-    // --- Wheel State & Logic ---
     const [wheelRotation, setWheelRotation] = useState(0);
     const WHEEL_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF8C42', '#1A535C', '#F7FFF7', '#FFD3B6', '#DCEDC1', '#A8E6CF'];
 
@@ -311,11 +310,9 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         if (isSpinning) return;
         setIsSpinning(true);
         setResult(null);
-        
         const randomOffset = Math.random() * 360;
         const totalRotation = 1800 + randomOffset;
         setWheelRotation(prev => prev + totalRotation);
-
         setTimeout(() => {
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
@@ -326,7 +323,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         }, 4000); 
     };
 
-    // --- Ladder State & Logic ---
     const [ladderPaths, setLadderPaths] = useState([]);
     const [ladderActivePath, setLadderActivePath] = useState([]); 
     const [selectedLadderStart, setSelectedLadderStart] = useState(null);
@@ -363,12 +359,10 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         setResult(null);
         setLadderActivePath([]);
         setLadderResultIndex(-1);
-
         let currentLane = startIdx;
         let currentStep = 0;
         const pathHistory = [{lane: startIdx, step: 0, type: 'start'}];
         const totalSteps = ladderPaths.length;
-
         const interval = setInterval(() => {
             if(currentStep >= totalSteps) {
                 clearInterval(interval);
@@ -377,20 +371,15 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                 setIsSpinning(false);
                 return;
             }
-
             const bridges = ladderPaths[currentStep];
             let nextLane = currentLane;
-            
             if(currentLane > 0 && bridges[currentLane-1]) nextLane = currentLane - 1;
             else if(currentLane < candidates.length - 1 && bridges[currentLane]) nextLane = currentLane + 1;
-
             if(nextLane !== currentLane) pathHistory.push({lane: nextLane, step: currentStep + 1, type: 'cross'});
             else pathHistory.push({lane: nextLane, step: currentStep + 1, type: 'down'});
-            
             setLadderActivePath([...pathHistory]);
             currentLane = nextLane;
             currentStep++;
-
         }, 300); 
     };
 
@@ -404,7 +393,6 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
         const largeArc = angle > 180 ? 1 : 0;
         const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArc} 1 ${x2} ${y2} Z`;
         const midAngle = rotation + angle / 2;
-        
         return (
             <g key={index}>
                 <path d={pathData} fill={WHEEL_COLORS[index % WHEEL_COLORS.length]} stroke="white" strokeWidth="0.5" />
@@ -455,10 +443,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                             </div>
                             <div className="flex-1 relative w-full mb-8">
                                 <svg className="absolute inset-0 w-full h-full" style={{overflow: 'visible'}}>
-                                    {candidates.map((_, i) => {
-                                        const x = (i / (candidates.length - 1)) * 100;
-                                        return <line key={i} x1={`${x}%`} y1="0%" x2={`${x}%`} y2="100%" stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />;
-                                    })}
+                                    {candidates.map((_, i) => { const x = (i / (candidates.length - 1)) * 100; return <line key={i} x1={`${x}%`} y1="0%" x2={`${x}%`} y2="100%" stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />; })}
                                     {ladderPaths.map((row, rIdx) => {
                                         const y = ((rIdx + 1) / (ladderPaths.length + 1)) * 100;
                                         return row.map((hasBridge, cIdx) => hasBridge && (
@@ -581,18 +566,13 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
     );
 };
 
-// SocialView Component: Added Random Selector Logic
 const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
   const [msgInput, setMsgInput] = useState("");
   const [subTab, setSubTab] = useState("chat"); 
   const messagesEndRef = useRef(null);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("全部");
-  
-  // Custom categories state for Social View
   const [customCategories, setCustomCategories] = useState([]);
-  
-  // New States for Decision Maker
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedForDecision, setSelectedForDecision] = useState([]);
   const [showDecisionModal, setShowDecisionModal] = useState(false);
@@ -638,7 +618,6 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
   const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type), ...customCategories])];
   const filteredSharedList = selectedCategory === '全部' ? sharedRestaurants : sharedRestaurants.filter(r => r.type === selectedCategory);
 
-  // Logic for selecting restaurants for random picker
   const toggleSelection = (id) => {
       if (selectedForDecision.includes(id)) {
           setSelectedForDecision(selectedForDecision.filter(itemId => itemId !== id));
@@ -659,13 +638,12 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
       const newCat = prompt("請輸入新的分類名稱：");
       if (newCat && newCat.trim() && !availableCategories.includes(newCat.trim())) {
           setCustomCategories(prev => [...prev, newCat.trim()]);
-          setSelectedCategory(newCat.trim()); // Switch to new category
+          setSelectedCategory(newCat.trim());
       }
   };
 
   return (
     <div className="flex flex-col h-full bg-stone-50 relative">
-       {/* Decision Modal */}
        {showDecisionModal && (
            <DecisionMakerModal 
                candidates={sharedRestaurants.filter(r => selectedForDecision.includes(r.id))} 
@@ -779,7 +757,6 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                   <span className="text-[10px] font-bold text-stone-400">我的評分</span>
                                   {item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}
                                 </div>
-                               
                                 <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
                                     {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
                                         <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
@@ -789,7 +766,6 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                     ))}
                                     {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
                                 </div>
-
                                 <div className="flex justify-center border-t border-stone-200 pt-2">
                                     <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
                                 </div>
@@ -815,7 +791,6 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
 
 const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal, onDeleteRoom }) => {
     const [joinCodeInput, setJoinCodeInput] = useState("");
-
     return (
       <div className="p-6 h-full flex flex-col items-center font-rounded bg-gradient-to-b from-stone-100 to-white overflow-y-auto">
          <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-6 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105 mt-8">
@@ -824,7 +799,6 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
          </div>
          <h1 className="text-3xl font-black text-stone-800 mb-2">揪團大廳</h1>
          <p className="text-stone-400 text-sm mb-8">管理你的所有美食房間</p>
-
          <div className="w-full max-w-sm space-y-6">
              {myRooms.length > 0 && (
                  <div className="space-y-3">
@@ -833,19 +807,13 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
                          <div key={r.id} onClick={() => onEnterRoom(r)} className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                              <div><h3 className="font-bold text-stone-800">{r.name}</h3><span className="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded font-mono">#{r.code}</span></div>
                              <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }}
-                                    className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                                >
-                                    <Trash2 size={16}/>
-                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }} className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={16}/></button>
                                 <ArrowRight size={16} className="text-stone-300 group-hover:text-orange-500"/>
                              </div>
                          </div>
                      ))}
                  </div>
              )}
-
              <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 space-y-4">
                 <button onClick={onCreateRoom} className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"><PlusCircle size={20} /> 建立新房間</button>
                 <div className="relative py-2"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200"></div></div><div className="relative flex justify-center text-xs font-bold text-stone-400 tracking-wider"><span className="px-2 bg-white">或是</span></div></div>
@@ -865,20 +833,10 @@ const DetailModal = ({ showDetail, ...props }) => {
     const { shortlist, toggleShortlist, room, addToSharedList, removeFromSharedList, handleSystemShare, sharedRestaurants, updateSharedItemStatus, userProfile } = props;
     const isShortlisted = shortlist.some(item => item.id === r.id);
     const isInSharedList = room && sharedRestaurants.some(item => item.id === r.id);
-    
-    // Ensure data is valid for rendering
     let todayHours = r.todayHours;
-    if (!todayHours || typeof todayHours !== 'string') {
-        todayHours = "暫無資料";
-    }
-
+    if (!todayHours || typeof todayHours !== 'string') { todayHours = "暫無資料"; }
     let displayOpeningHours = r.openingHours; 
-    // Compatibility check for new/legacy API data structure
-    if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) {
-        displayOpeningHours = r.regularOpeningHours.weekdayDescriptions;
-    }
-    
-    // Fallback if todayHours wasn't calculated in search but we have data
+    if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) { displayOpeningHours = r.regularOpeningHours.weekdayDescriptions; }
     if (todayHours === "暫無資料" && Array.isArray(displayOpeningHours)) {
        const day = new Date().getDay(); 
        const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -896,7 +854,6 @@ const DetailModal = ({ showDetail, ...props }) => {
              <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/60 to-transparent"></div>
              <div className="absolute bottom-4 left-4 text-white"><span className="bg-white/20 px-3 py-1 rounded-full text-xs backdrop-blur-md border border-white/30 font-bold tracking-wide">{r.type}</span></div>
           </div>
-    
           <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)] relative">
             <div className="flex justify-between items-start mb-2">
               <h2 className="text-2xl font-black text-stone-800 leading-tight flex-1 mr-2">{r.name}</h2>
@@ -904,7 +861,6 @@ const DetailModal = ({ showDetail, ...props }) => {
             </div>
             <div className="flex items-center gap-2 mb-6 text-sm"><StarRating rating={r.rating} /> <span className="text-stone-400 font-medium">({r.userRatingsTotal || 0} 則評論)</span></div>
             <div className="bg-orange-50/50 p-4 rounded-2xl mb-6 text-xs text-stone-600 flex flex-col gap-2 border border-orange-100"><span className="font-bold flex items-center gap-2 text-orange-700 uppercase tracking-wider"><Clock size={14}/> 今日營業時間</span><span className="pl-6 text-sm font-medium">{todayHours.replace(/"/g, '')}</span></div>
-            
             {isInSharedList && (
                 <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 mb-6">
                     <div className="text-xs font-bold text-stone-500 mb-2">你在共同清單中的評價</div>
@@ -917,7 +873,6 @@ const DetailModal = ({ showDetail, ...props }) => {
                     </div>
                 </div>
             )}
-    
             <div className="space-y-4">
                <div className="bg-stone-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-stone-100 transition-colors cursor-pointer group" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)}>
                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-stone-400 shadow-sm group-hover:text-orange-500 transition-colors"><MapPin size={20} /></div>
@@ -926,7 +881,6 @@ const DetailModal = ({ showDetail, ...props }) => {
                </div>
             </div>
           </div>
-    
           <div className="p-4 border-t border-stone-200 flex gap-3 pb-8 bg-white safe-area-bottom">
              <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}><Heart size={20} fill={isShortlisted ? "currentColor" : "none"} /></button>
              {room ? (
@@ -1274,21 +1228,36 @@ export default function App() {
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [sharedRestaurants, setSharedRestaurants] = useState([]); 
   const [firebaseUser, setFirebaseUser] = useState(null);
+  const [authError, setAuthError] = useState(firebaseErrorMsg);
   
   // 新增：排序狀態
   const [sortBy, setSortBy] = useState('default');
 
   // Firebase Auth
   useEffect(() => {
+    if (firebaseErrorMsg) return; 
+
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      if (!auth) {
+          setAuthError("Firebase Auth 服務未初始化");
+          return;
+      }
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+            await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Auth Error:", e);
+        setAuthError(typeof e === 'string' ? e : e.message);
       }
     };
     initAuth();
-    return onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+    
+    if (auth) {
+        return onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+    }
   }, []);
 
   useEffect(() => {
@@ -1751,6 +1720,18 @@ export default function App() {
       setIsAiAnalyzing(false);
     }
   };
+
+  if (authError) {
+      return (
+          <div className="h-screen flex flex-col items-center justify-center p-6 bg-stone-50 text-center font-rounded">
+              <AlertCircle size={48} className="text-red-500 mb-4" />
+              <h2 className="text-xl font-black text-stone-800 mb-2">發生錯誤</h2>
+              {/* Ensure we only render string here */}
+              <p className="text-stone-500 text-sm mb-4">{typeof authError === 'string' ? authError : '未知錯誤，請檢查 Firebase 設定'}</p>
+              <p className="text-xs text-stone-400 bg-stone-100 p-2 rounded max-w-xs">如果您是在本機開發，請檢查 Firebase Config 是否正確設定。</p>
+          </div>
+      );
+  }
 
   return (
     <div className="h-[100dvh] bg-stone-50 max-w-md mx-auto relative overflow-hidden flex flex-col font-sans font-rounded text-stone-800">
