@@ -30,11 +30,15 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       
 
 // 🔥 Firebase 設定
-const FIREBASE_CONFIG = JSON.parse(__firebase_config);
-const app = initializeApp(FIREBASE_CONFIG);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = {
+  apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
+  authDomain: "foodvotingapp.firebaseapp.com",
+  projectId: "foodvotingapp",
+  storageBucket: "foodvotingapp.firebasestorage.app",
+  messagingSenderId: "765035779856",
+  appId: "1:765035779856:web:fd38c7b2e88f4a44f3b795",
+  measurementId: "G-XC9G7C62GD"
+};
 
 // --- 常數定義 ---
 const DEFAULT_CATEGORIES = ['全部', '台式', '日式', '韓式', '美式', '義式', '泰式', '火鍋', '燒肉', '早午餐', '甜點', '素食', '小吃', '其他'];
