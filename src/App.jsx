@@ -26,8 +26,7 @@ import {
 // ==========================================
 // 請在此填入您的 API Key
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";     
-      
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";           
       
 
 // 🔥 Firebase 設定
