@@ -37,7 +37,7 @@ const MANUAL_FIREBASE_CONFIG = {
   storageBucket: "foodvotingapp.firebasestorage.app",
   messagingSenderId: "765035779856",
   appId: "1:765035779856:web:fd38c7b2e88f4a44f3b795",
-  measurementId: "G-XC9G7C62GD"
+  measurementId: "G-XC9G7C62GD"""
 };
 
 // 🔥 Firebase 設定與初始化 (包含錯誤處理)
