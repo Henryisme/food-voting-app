@@ -24,7 +24,7 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 請在此填入您的 API Key
+// 請在此填入您的 API Key (如果沒有自動讀取到環境變數)
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
 
@@ -757,6 +757,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                   <span className="text-[10px] font-bold text-stone-400">我的評分</span>
                                   {item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}
                                 </div>
+                               
                                 <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
                                     {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
                                         <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
@@ -766,6 +767,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
                                     ))}
                                     {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
                                 </div>
+
                                 <div className="flex justify-center border-t border-stone-200 pt-2">
                                     <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
                                 </div>
@@ -791,6 +793,7 @@ const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onB
 
 const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal, onDeleteRoom }) => {
     const [joinCodeInput, setJoinCodeInput] = useState("");
+
     return (
       <div className="p-6 h-full flex flex-col items-center font-rounded bg-gradient-to-b from-stone-100 to-white overflow-y-auto">
          <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-6 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105 mt-8">
@@ -799,6 +802,7 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
          </div>
          <h1 className="text-3xl font-black text-stone-800 mb-2">揪團大廳</h1>
          <p className="text-stone-400 text-sm mb-8">管理你的所有美食房間</p>
+
          <div className="w-full max-w-sm space-y-6">
              {myRooms.length > 0 && (
                  <div className="space-y-3">
@@ -807,13 +811,19 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
                          <div key={r.id} onClick={() => onEnterRoom(r)} className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
                              <div><h3 className="font-bold text-stone-800">{r.name}</h3><span className="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded font-mono">#{r.code}</span></div>
                              <div className="flex items-center gap-2">
-                                <button onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }} className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={16}/></button>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }}
+                                    className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
                                 <ArrowRight size={16} className="text-stone-300 group-hover:text-orange-500"/>
                              </div>
                          </div>
                      ))}
                  </div>
              )}
+
              <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 space-y-4">
                 <button onClick={onCreateRoom} className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"><PlusCircle size={20} /> 建立新房間</button>
                 <div className="relative py-2"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200"></div></div><div className="relative flex justify-center text-xs font-bold text-stone-400 tracking-wider"><span className="px-2 bg-white">或是</span></div></div>
@@ -833,10 +843,20 @@ const DetailModal = ({ showDetail, ...props }) => {
     const { shortlist, toggleShortlist, room, addToSharedList, removeFromSharedList, handleSystemShare, sharedRestaurants, updateSharedItemStatus, userProfile } = props;
     const isShortlisted = shortlist.some(item => item.id === r.id);
     const isInSharedList = room && sharedRestaurants.some(item => item.id === r.id);
+    
+    // Ensure data is valid for rendering
     let todayHours = r.todayHours;
-    if (!todayHours || typeof todayHours !== 'string') { todayHours = "暫無資料"; }
+    if (!todayHours || typeof todayHours !== 'string') {
+        todayHours = "暫無資料";
+    }
+
     let displayOpeningHours = r.openingHours; 
-    if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) { displayOpeningHours = r.regularOpeningHours.weekdayDescriptions; }
+    // Compatibility check for new/legacy API data structure
+    if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) {
+        displayOpeningHours = r.regularOpeningHours.weekdayDescriptions;
+    }
+    
+    // Fallback if todayHours wasn't calculated in search but we have data
     if (todayHours === "暫無資料" && Array.isArray(displayOpeningHours)) {
        const day = new Date().getDay(); 
        const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -854,6 +874,7 @@ const DetailModal = ({ showDetail, ...props }) => {
              <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/60 to-transparent"></div>
              <div className="absolute bottom-4 left-4 text-white"><span className="bg-white/20 px-3 py-1 rounded-full text-xs backdrop-blur-md border border-white/30 font-bold tracking-wide">{r.type}</span></div>
           </div>
+    
           <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)] relative">
             <div className="flex justify-between items-start mb-2">
               <h2 className="text-2xl font-black text-stone-800 leading-tight flex-1 mr-2">{r.name}</h2>
@@ -861,6 +882,7 @@ const DetailModal = ({ showDetail, ...props }) => {
             </div>
             <div className="flex items-center gap-2 mb-6 text-sm"><StarRating rating={r.rating} /> <span className="text-stone-400 font-medium">({r.userRatingsTotal || 0} 則評論)</span></div>
             <div className="bg-orange-50/50 p-4 rounded-2xl mb-6 text-xs text-stone-600 flex flex-col gap-2 border border-orange-100"><span className="font-bold flex items-center gap-2 text-orange-700 uppercase tracking-wider"><Clock size={14}/> 今日營業時間</span><span className="pl-6 text-sm font-medium">{todayHours.replace(/"/g, '')}</span></div>
+            
             {isInSharedList && (
                 <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 mb-6">
                     <div className="text-xs font-bold text-stone-500 mb-2">你在共同清單中的評價</div>
@@ -873,6 +895,7 @@ const DetailModal = ({ showDetail, ...props }) => {
                     </div>
                 </div>
             )}
+    
             <div className="space-y-4">
                <div className="bg-stone-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-stone-100 transition-colors cursor-pointer group" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)}>
                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-stone-400 shadow-sm group-hover:text-orange-500 transition-colors"><MapPin size={20} /></div>
@@ -881,6 +904,7 @@ const DetailModal = ({ showDetail, ...props }) => {
                </div>
             </div>
           </div>
+    
           <div className="p-4 border-t border-stone-200 flex gap-3 pb-8 bg-white safe-area-bottom">
              <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}><Heart size={20} fill={isShortlisted ? "currentColor" : "none"} /></button>
              {room ? (
