@@ -29,7 +29,6 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
 
 // ⚠️ 請在此填入您的 Firebase Config (如果沒有自動讀取到環境變數)
-// 請將您的 Firebase 設定物件直接貼在下方
 const MANUAL_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
   authDomain: "foodvotingapp.firebaseapp.com",
@@ -40,7 +39,7 @@ const MANUAL_FIREBASE_CONFIG = {
   measurementId: "G-XC9G7C62GD"
 };
 
-// 🔥 Firebase 設定與初始化 (包含錯誤處理)
+// 🔥 Firebase 設定與初始化
 let app, auth, db;
 let appId = 'default-app-id';
 let firebaseErrorMsg = null;
@@ -55,14 +54,12 @@ try {
   if (isManualConfigValid) {
       config = MANUAL_FIREBASE_CONFIG;
       useStrictPath = false; // 使用個人 Firebase 時，切換到簡單路徑模式 (根目錄)
-      console.log("Using MANUAL_FIREBASE_CONFIG (Personal DB)");
   } 
   // 2. 如果沒有手動設定，才嘗試讀取環境變數 (Canvas 環境)
   else if (typeof __firebase_config !== 'undefined') {
     try {
         config = JSON.parse(__firebase_config);
         useStrictPath = true; // 環境變數存在，使用 Canvas 深層路徑
-        console.log("Using Canvas Environment Config");
     } catch (e) {
         console.warn("解析環境變數失敗");
     }
@@ -185,6 +182,12 @@ const StarRating = ({ rating }) => (
 
 const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
   const [hoverValue, setHoverValue] = useState(null);
+  const handleMouseMove = (e, index) => {
+    if (readOnly) return;
+    const { left, width } = e.currentTarget.getBoundingClientRect();
+    const percent = (e.clientX - left) / width;
+    setHoverValue(index + (percent > 0.5 ? 1 : 0.5));
+  };
   const displayValue = hoverValue !== null ? hoverValue : value;
   return (
     <div className="flex" onMouseLeave={() => setHoverValue(null)}>
@@ -203,7 +206,7 @@ const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
 
 const calculateTravelTime = (meters) => ({ walk: Math.ceil(meters / 83), bike: Math.ceil(meters / 250), car: Math.ceil(meters / 500) });
 
-// --- Components ---
+// --- Components (All Defined BEFORE App to avoid ReferenceError) ---
 
 const NavBar = ({ activeTab, setActiveTab }) => {
   return (
@@ -594,12 +597,21 @@ const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom
     );
 };
 
-const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, executeSearch, loading, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, sortBy, setSortBy }) => (
+const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, executeSearch, loading, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, sortBy, setSortBy, errorMsg }) => (
   <div className="p-6 space-y-8">
      <div className="text-center mt-6">
        <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-white shadow-xl mx-auto"><img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} className="w-full h-full object-cover" /></div>
        <h1 className="text-3xl font-black text-stone-800">今天吃什麼</h1>
      </div>
+
+     {/* 新增：顯示錯誤訊息 */}
+     {errorMsg && (
+        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+            <AlertCircle size={18} className="flex-shrink-0"/>
+            <span>{errorMsg}</span>
+        </div>
+     )}
+
      <div className="bg-white p-5 rounded-3xl shadow-sm border cursor-pointer" onClick={() => setIsMapMode(true)}>
        <div className="flex items-center gap-2"><MapPin size={16} className="text-orange-500"/> <span className="font-bold text-stone-700">設定搜尋位置</span></div>
        <div className="text-xs text-stone-400 mt-1">{virtualLocation ? `${virtualLocation.lat.toFixed(4)}, ${virtualLocation.lng.toFixed(4)}` : "定位中..."}</div>
@@ -658,7 +670,14 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
        </div>
      </div>
 
-     <button onClick={executeSearch} disabled={loading} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-bold shadow-lg">{loading ? "搜尋中..." : "開始搜尋"}</button>
+     <button 
+        onClick={executeSearch} 
+        disabled={loading} 
+        className="w-full bg-stone-800 text-white py-4 rounded-2xl font-bold shadow-lg disabled:opacity-70 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-2"
+     >
+        {loading && <span className="animate-spin">⌛</span>}
+        {loading ? "搜尋中..." : "開始搜尋"}
+     </button>
   </div>
 );
 
@@ -1453,8 +1472,19 @@ export default function App() {
               <AlertCircle size={48} className="text-red-500 mb-4" />
               <h2 className="text-xl font-black text-stone-800 mb-2">發生錯誤</h2>
               {/* Ensure we only render string here */}
-              <p className="text-stone-500 text-sm mb-4">{typeof authError === 'string' ? authError : '未知錯誤，請檢查 Firebase 設定'}</p>
-              <p className="text-xs text-stone-400 bg-stone-100 p-2 rounded max-w-xs">如果您是在本機開發，請檢查 Firebase Config 是否正確設定。</p>
+              <p className="text-stone-500 text-sm mb-4 max-w-md mx-auto">{typeof authError === 'string' ? authError : '未知錯誤'}</p>
+              {authError.includes("auth/configuration-not-found") && (
+                  <div className="text-left text-xs bg-white p-4 rounded-xl border border-stone-200 shadow-sm max-w-xs mx-auto space-y-2">
+                      <p className="font-bold text-stone-700">如何修復：</p>
+                      <ol className="list-decimal list-inside text-stone-500 space-y-1">
+                          <li>前往 <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-blue-500 underline">Firebase Console</a></li>
+                          <li>點選您的專案</li>
+                          <li>左側選單點選 <strong>Authentication</strong></li>
+                          <li>點選 <strong>Sign-in method</strong> 分頁</li>
+                          <li>啟用 <strong>Anonymous (匿名)</strong> 提供者</li>
+                      </ol>
+                  </div>
+              )}
           </div>
       );
   }
@@ -1485,6 +1515,7 @@ export default function App() {
             loading={loading}
             sortBy={sortBy}
             setSortBy={setSortBy}
+            errorMsg={errorMsg} // 這裡新增傳遞 errorMsg
           />
         ) : (
           <SearchResultsComponent 
