@@ -5,7 +5,7 @@ import {
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
   Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
-  Minimize2, Maximize2, Tag, DollarSign, Check, Filter, Play, RefreshCw, Grid
+  Minimize2, Maximize2, Tag, DollarSign, Check, Filter, Play, RefreshCw, Grid, AlertTriangle
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -202,7 +202,7 @@ const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
 
 const calculateTravelTime = (meters) => ({ walk: Math.ceil(meters / 83), bike: Math.ceil(meters / 250), car: Math.ceil(meters / 500) });
 
-// --- Components (Defined BEFORE App) ---
+// --- Components ---
 
 const NavBar = ({ activeTab, setActiveTab }) => {
   return (
