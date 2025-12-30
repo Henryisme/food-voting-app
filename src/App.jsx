@@ -24,11 +24,11 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 請在此填入您的 API Key (如果沒有自動讀取到環境變數)
+// 請在此填入您的 API Key
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
 
-// ⚠️ 請在此填入您的 Firebase Config (如果沒有自動讀取到環境變數)
+// ⚠️ 請在此填入您的 Firebase Config
 const MANUAL_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
   authDomain: "foodvotingapp.firebaseapp.com",
@@ -54,12 +54,14 @@ try {
   if (isManualConfigValid) {
       config = MANUAL_FIREBASE_CONFIG;
       useStrictPath = false; // 使用個人 Firebase 時，切換到簡單路徑模式 (根目錄)
+      console.log("Using MANUAL_FIREBASE_CONFIG (Personal DB)");
   } 
   // 2. 如果沒有手動設定，才嘗試讀取環境變數 (Canvas 環境)
   else if (typeof __firebase_config !== 'undefined') {
     try {
         config = JSON.parse(__firebase_config);
         useStrictPath = true; // 環境變數存在，使用 Canvas 深層路徑
+        console.log("Using Canvas Environment Config");
     } catch (e) {
         console.warn("解析環境變數失敗");
     }
@@ -182,12 +184,6 @@ const StarRating = ({ rating }) => (
 
 const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
   const [hoverValue, setHoverValue] = useState(null);
-  const handleMouseMove = (e, index) => {
-    if (readOnly) return;
-    const { left, width } = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - left) / width;
-    setHoverValue(index + (percent > 0.5 ? 1 : 0.5));
-  };
   const displayValue = hoverValue !== null ? hoverValue : value;
   return (
     <div className="flex" onMouseLeave={() => setHoverValue(null)}>
@@ -206,7 +202,7 @@ const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
 
 const calculateTravelTime = (meters) => ({ walk: Math.ceil(meters / 83), bike: Math.ceil(meters / 250), car: Math.ceil(meters / 500) });
 
-// --- Components (All Defined BEFORE App to avoid ReferenceError) ---
+// --- Components (Defined BEFORE App) ---
 
 const NavBar = ({ activeTab, setActiveTab }) => {
   return (
