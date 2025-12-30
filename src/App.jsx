@@ -1471,20 +1471,31 @@ export default function App() {
           <div className="h-screen flex flex-col items-center justify-center p-6 bg-stone-50 text-center font-rounded">
               <AlertCircle size={48} className="text-red-500 mb-4" />
               <h2 className="text-xl font-black text-stone-800 mb-2">發生錯誤</h2>
-              {/* Ensure we only render string here */}
               <p className="text-stone-500 text-sm mb-4 max-w-md mx-auto">{typeof authError === 'string' ? authError : '未知錯誤'}</p>
+              {
+                  // Show debugging info
+              }
+               <div className="mb-4 text-xs text-stone-400 bg-stone-100 p-2 rounded">
+                  <p>Project ID: {MANUAL_FIREBASE_CONFIG.projectId}</p>
+                  <p>API Key Prefix: {MANUAL_FIREBASE_CONFIG.apiKey ? MANUAL_FIREBASE_CONFIG.apiKey.substring(0, 5) + '...' : 'None'}</p>
+              </div>
+
               {authError.includes("auth/configuration-not-found") && (
                   <div className="text-left text-xs bg-white p-4 rounded-xl border border-stone-200 shadow-sm max-w-xs mx-auto space-y-2">
-                      <p className="font-bold text-stone-700">如何修復：</p>
-                      <ol className="list-decimal list-inside text-stone-500 space-y-1">
-                          <li>前往 <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-blue-500 underline">Firebase Console</a></li>
-                          <li>點選您的專案</li>
-                          <li>左側選單點選 <strong>Authentication</strong></li>
-                          <li>點選 <strong>Sign-in method</strong> 分頁</li>
-                          <li>啟用 <strong>Anonymous (匿名)</strong> 提供者</li>
-                      </ol>
+                      <p className="font-bold text-stone-700">可能原因與解法：</p>
+                      <ul className="list-disc list-inside text-stone-500 space-y-1">
+                          <li><strong>專案不符合：</strong>請確認您的 Config 中的 projectId <code>{MANUAL_FIREBASE_CONFIG.projectId}</code> 與您開啟 Auth 的專案一致。</li>
+                          <li><strong>尚未啟用：</strong>Firebase Console &gt; Authentication &gt; Sign-in method &gt; Anonymous 必須設為 Enabled。</li>
+                          <li><strong>API Key 限制：</strong>若您在 Google Cloud Console 限制了 API Key，請確保已允許 <strong>Identity Toolkit API</strong>。</li>
+                      </ul>
                   </div>
               )}
+               <button 
+                  onClick={() => window.location.reload()} 
+                  className="mt-6 px-6 py-2 bg-stone-800 text-white rounded-xl font-bold shadow-lg active:scale-95 transition-transform"
+              >
+                  重新整理頁面
+              </button>
           </div>
       );
   }
@@ -1515,7 +1526,7 @@ export default function App() {
             loading={loading}
             sortBy={sortBy}
             setSortBy={setSortBy}
-            errorMsg={errorMsg} // 這裡新增傳遞 errorMsg
+            errorMsg={errorMsg} 
           />
         ) : (
           <SearchResultsComponent 
