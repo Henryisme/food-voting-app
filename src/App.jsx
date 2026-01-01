@@ -5,7 +5,7 @@ import {
   Locate, Send, AlertCircle, Clock, Search, ChevronDown, ArrowLeft,
   MessageCircle, Camera, User, LogOut, ThumbsUp, PlusCircle, Link as LinkIcon,
   Bike, Car, Footprints, Vote, Edit2, CheckCircle, Circle, Trash2, Plus, ArrowRight,
-  Minimize2, Maximize2, Tag, DollarSign, Check, Filter, Play, RefreshCw, Grid
+  Minimize2, Maximize2, Tag, DollarSign, Check, Filter, Play, RefreshCw, Grid, AlertTriangle, Copy
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -24,12 +24,11 @@ import {
 // ==========================================
 // ⚠️ 設定區
 // ==========================================
-// 請在此填入您的 API Key (如果沒有自動讀取到環境變數)
+// 請在此填入您的 API Key
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""; 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";      
 
-// ⚠️ 請在此填入您的 Firebase Config (如果沒有自動讀取到環境變數)
-// 請將您的 Firebase 設定物件直接貼在下方
+// ⚠️ 請在此填入您的 Firebase Config
 const MANUAL_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBp8ni5BDM4NRpPgqBPe2x9pUi3rPPnv5w",
   authDomain: "foodvotingapp.firebaseapp.com",
@@ -40,25 +39,26 @@ const MANUAL_FIREBASE_CONFIG = {
   measurementId: "G-XC9G7C62GD"
 };
 
-// 🔥 Firebase 設定與初始化 (包含錯誤處理)
+// 🔥 Firebase 設定與初始化
 let app, auth, db;
 let appId = 'default-app-id';
 let firebaseErrorMsg = null;
+let useStrictPath = true;
 
 try {
   let config = null;
-  // 1. 嘗試讀取環境變數 (Canvas 環境自動注入)
   if (typeof __firebase_config !== 'undefined') {
     try {
         config = JSON.parse(__firebase_config);
+        useStrictPath = true;
     } catch (e) {
-        console.warn("解析環境變數失敗，嘗試使用手動設定");
+        console.warn("解析環境變數失敗");
     }
   }
 
-  // 2. 如果環境變數沒有，則使用手動設定
   if ((!config || !config.apiKey) && MANUAL_FIREBASE_CONFIG.apiKey) {
       config = MANUAL_FIREBASE_CONFIG;
+      useStrictPath = false; 
   }
 
   if (config && config.apiKey) {
@@ -69,18 +69,32 @@ try {
         appId = __app_id;
     }
   } else {
-    firebaseErrorMsg = "找不到有效的 Firebase 設定。請確認環境變數或填寫 MANUAL_FIREBASE_CONFIG。";
-    console.warn("Firebase config not found.");
+    firebaseErrorMsg = "找不到有效的 Firebase 設定。";
   }
 } catch (error) {
   firebaseErrorMsg = `Firebase 初始化失敗: ${error.message}`;
-  console.error("Firebase initialization failed:", error);
 }
 
-// --- 常數定義 ---
+// --- 智慧路徑輔助函式 ---
+const getSmartCollection = (dbInstance, ...pathSegments) => {
+    if (useStrictPath) {
+        return collection(dbInstance, 'artifacts', appId, 'public', 'data', ...pathSegments);
+    } else {
+        return collection(dbInstance, ...pathSegments);
+    }
+};
+
+const getSmartDoc = (dbInstance, ...pathSegments) => {
+    if (useStrictPath) {
+        return doc(dbInstance, 'artifacts', appId, 'public', 'data', ...pathSegments);
+    } else {
+        return doc(dbInstance, ...pathSegments);
+    }
+};
+
+// --- 常數與工具函數 ---
 const DEFAULT_CATEGORIES = ['全部', '台式', '日式', '韓式', '美式', '義式', '泰式', '火鍋', '燒肉', '早午餐', '甜點', '素食', '小吃', '其他'];
 
-// --- 工具函數 ---
 const mapGoogleTypeToCategory = (types) => {
   if (!types || types.length === 0) return '其他';
   const t = Array.isArray(types) ? types.join(' ').toLowerCase() : '';
@@ -99,12 +113,10 @@ const mapGoogleTypeToCategory = (types) => {
 
 const convertPriceLevel = (level) => {
     if (typeof level === 'number') return level;
-    if (!level) return 0;
-    if (level === 'PRICE_LEVEL_FREE') return 0;
-    if (level === 'PRICE_LEVEL_INEXPENSIVE') return 1;
-    if (level === 'PRICE_LEVEL_MODERATE') return 2;
-    if (level === 'PRICE_LEVEL_EXPENSIVE') return 3;
-    if (level === 'PRICE_LEVEL_VERY_EXPENSIVE') return 4;
+    if (level === 1 || level === 'PRICE_LEVEL_INEXPENSIVE') return 1;
+    if (level === 2 || level === 'PRICE_LEVEL_MODERATE') return 2;
+    if (level === 3 || level === 'PRICE_LEVEL_EXPENSIVE') return 3;
+    if (level === 4 || level === 'PRICE_LEVEL_VERY_EXPENSIVE') return 4;
     return 0; 
 };
 
@@ -113,8 +125,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return (R * c).toFixed(2);
 };
@@ -138,18 +149,12 @@ const callGemini = async (prompt) => {
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
     );
     if (!response.ok) throw new Error("Network error");
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text || "AI 暫時無法回應。";
-  } catch (error) {
-    return "AI 連線發生問題。";
-  }
+  } catch (error) { return "AI 連線發生問題。"; }
 };
 
 const PriceDisplay = ({ level }) => {
@@ -170,23 +175,15 @@ const StarRating = ({ rating }) => (
 
 const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
   const [hoverValue, setHoverValue] = useState(null);
-  const handleMouseMove = (e, index) => {
-    if (readOnly) return;
-    const { left, width } = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - left) / width;
-    setHoverValue(index + (percent > 0.5 ? 1 : 0.5));
-  };
   const displayValue = hoverValue !== null ? hoverValue : value;
   return (
     <div className="flex" onMouseLeave={() => setHoverValue(null)}>
       {[0, 1, 2, 3, 4].map((index) => {
         const fill = Math.max(0, Math.min(1, displayValue - index)); 
         return (
-          <div key={index} className={`relative w-6 h-6 ${readOnly ? '' : 'cursor-pointer'}`} onMouseMove={(e) => handleMouseMove(e, index)} onClick={() => !readOnly && onChange(hoverValue)}>
+          <div key={index} className={`relative w-6 h-6 ${readOnly ? '' : 'cursor-pointer'}`} onMouseMove={(e) => { if (!readOnly) { const { left, width } = e.currentTarget.getBoundingClientRect(); setHoverValue(index + ((e.clientX - left) / width > 0.5 ? 1 : 0.5)); } }} onClick={() => !readOnly && onChange(hoverValue)}>
             <Star size={18} className="text-stone-300 absolute top-0 left-0" />
-            <div className="absolute top-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-               <Star size={18} className="text-yellow-400 fill-yellow-400" />
-            </div>
+            <div className="absolute top-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}><Star size={18} className="text-yellow-400 fill-yellow-400" /></div>
           </div>
         );
       })}
@@ -194,14 +191,19 @@ const InteractiveStarRating = ({ value, onChange, readOnly = false }) => {
   );
 };
 
-const calculateTravelTime = (meters) => {
-  const walk = Math.ceil(meters / 83);
-  const bike = Math.ceil(meters / 250);
-  const car = Math.ceil(meters / 500);
-  return { walk, bike, car };
-};
+const calculateTravelTime = (meters) => ({ walk: Math.ceil(meters / 83), bike: Math.ceil(meters / 250), car: Math.ceil(meters / 500) });
 
-// --- 元件定義 (依照順序排列) ---
+// --- Components (All Defined BEFORE App to avoid ReferenceError) ---
+
+const NavBar = ({ activeTab, setActiveTab }) => {
+  return (
+    <div className="h-24 bg-white/90 backdrop-blur-md border-t border-stone-200 flex items-center justify-around px-6 pb-6 fixed bottom-0 w-full max-w-md z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+      <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-stone-800 -translate-y-2' : 'text-stone-400 hover:text-stone-500'}`}><div className={`p-2 rounded-2xl transition-all ${activeTab === 'home' ? 'bg-stone-100 shadow-sm' : ''}`}><Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} /></div><span className="text-[10px] font-bold">搜尋</span></button>
+      <button onClick={() => setActiveTab('shortlist')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'shortlist' ? 'text-rose-500 -translate-y-2' : 'text-stone-400 hover:text-stone-500'}`}><div className={`p-2 rounded-2xl transition-all ${activeTab === 'shortlist' ? 'bg-rose-50 shadow-sm' : ''}`}><div className="relative"><Heart size={24} strokeWidth={activeTab === 'shortlist' ? 2.5 : 2} /></div></div><span className="text-[10px] font-bold">清單</span></button>
+      <button onClick={() => setActiveTab('social')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'social' ? 'text-teal-600 -translate-y-2' : 'text-stone-400 hover:text-stone-500'}`}><div className={`p-2 rounded-2xl transition-all ${activeTab === 'social' ? 'bg-teal-50 shadow-sm' : ''}`}><MessageCircle size={24} strokeWidth={activeTab === 'social' ? 2.5 : 2} /></div><span className="text-[10px] font-bold">揪團</span></button>
+    </div>
+  );
+};
 
 const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
   <div className="flex gap-2 overflow-x-auto pb-2 px-1 custom-scrollbar items-center">
@@ -210,18 +212,13 @@ const CategoryTabs = ({ categories, selected, onSelect, onAddCategory }) => (
         {cat}
       </button>
     ))}
-    {onAddCategory && (
-        <button onClick={onAddCategory} className="whitespace-nowrap px-3 py-1.5 rounded-full bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200 hover:text-stone-600 transition-colors flex items-center justify-center">
-            <Plus size={14} strokeWidth={3}/>
-        </button>
-    )}
+    {onAddCategory && <button onClick={onAddCategory} className="whitespace-nowrap px-3 py-1.5 rounded-full bg-stone-100 text-stone-400 border border-stone-200 hover:bg-stone-200 hover:text-stone-600 transition-colors flex items-center justify-center"><Plus size={14} strokeWidth={3}/></button>}
   </div>
 );
 
 const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation }) => {
   const mapRef = useRef(null);
-  const safeLocation = initialLocation || { lat: 25.0330, lng: 121.5654 };
-  const [selectedLoc, setSelectedLoc] = useState(safeLocation);
+  const [selectedLoc, setSelectedLoc] = useState(initialLocation || { lat: 25.0330, lng: 121.5654 });
   const [mapError, setMapError] = useState("");
   const [addressInput, setAddressInput] = useState("");
   const [foundPlaceName, setFoundPlaceName] = useState(""); 
@@ -229,70 +226,50 @@ const RealMapSelector = ({ initialLocation, onConfirm, onCancel, userLocation })
   const markerRef = useRef(null);
   
   useEffect(() => {
-    if (!window.google || !window.google.maps) {
-        setMapError("Google Maps API 未載入，請確認 API Key。");
-        return;
-    }
+    if (!window.google || !window.google.maps) { setMapError("Google Maps API 未載入"); return; }
     if (!mapRef.current) return;
     try {
-      const map = new window.google.maps.Map(mapRef.current, { center: safeLocation, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
-      const marker = new window.google.maps.Marker({ position: safeLocation, map: map, draggable: true, animation: window.google.maps.Animation.DROP, title: "拖曳我來修改位置" });
-      mapInstanceRef.current = map;
-      markerRef.current = marker;
+      const map = new window.google.maps.Map(mapRef.current, { center: selectedLoc, zoom: 15, disableDefaultUI: true, clickableIcons: false, mapId: "DEMO_MAP_ID" });
+      const marker = new window.google.maps.Marker({ position: selectedLoc, map: map, draggable: true, animation: window.google.maps.Animation.DROP });
+      mapInstanceRef.current = map; markerRef.current = marker;
       map.addListener("click", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; marker.setPosition(newLoc); setSelectedLoc(newLoc); setFoundPlaceName("地圖選取位置"); map.panTo(newLoc); });
       marker.addListener("dragend", (e) => { const newLoc = { lat: e.latLng.lat(), lng: e.latLng.lng() }; setSelectedLoc(newLoc); setFoundPlaceName("地圖選取位置"); map.panTo(newLoc); });
-    } catch (e) { setMapError("地圖載入發生錯誤：" + e.message); }
+    } catch (e) { setMapError("地圖載入錯誤：" + e.message); }
   }, []);
 
   const handleAddressSearch = () => {
       if (!window.google || !window.google.maps || !addressInput.trim()) return;
       const service = new window.google.maps.places.PlacesService(mapInstanceRef.current);
-      const request = { query: addressInput, fields: ['name', 'geometry', 'formatted_address'] };
-      service.findPlaceFromQuery(request, (results, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
-              const place = results[0];
-              const location = place.geometry.location;
-              const newLoc = { lat: location.lat(), lng: location.lng() };
+      service.findPlaceFromQuery({ query: addressInput, fields: ['name', 'geometry', 'formatted_address'] }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+              const loc = results[0].geometry.location;
+              const newLoc = { lat: loc.lat(), lng: loc.lng() };
               setSelectedLoc(newLoc);
-              setFoundPlaceName(place.name || place.formatted_address); 
+              setFoundPlaceName(results[0].name || results[0].formatted_address); 
               if (mapInstanceRef.current) { mapInstanceRef.current.panTo(newLoc); mapInstanceRef.current.setZoom(16); }
               if (markerRef.current) markerRef.current.setPosition(newLoc);
-          } else {
-              const geocoder = new window.google.maps.Geocoder();
-              geocoder.geocode({ address: addressInput }, (results, status) => {
-                  if (status === 'OK' && results[0]) {
-                      const location = results[0].geometry.location;
-                      const newLoc = { lat: location.lat(), lng: location.lng() };
-                      setSelectedLoc(newLoc);
-                      setFoundPlaceName(results[0].formatted_address);
-                      if (mapInstanceRef.current) mapInstanceRef.current.panTo(newLoc);
-                      if (markerRef.current) markerRef.current.setPosition(newLoc);
-                  } else { alert('找不到該地點，請嘗試更具體的名稱或地址。'); }
-              });
-          }
+          } else { alert('找不到該地點'); }
       });
   };
 
   return (
     <div className="fixed inset-0 z-[60] bg-white flex flex-col animate-in fade-in font-rounded">
       <div className="p-4 bg-white/80 backdrop-blur-md border-b flex justify-between items-center shadow-sm z-10 absolute top-0 w-full">
-        <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改目前位置</h3>
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin className="text-rose-500" /> 修改位置</h3>
         <button onClick={onCancel} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20} /></button>
       </div>
       <div className="flex-1 relative bg-slate-100 flex items-center justify-center h-full pt-16 pb-40">
-        {mapError ? <div className="text-center p-6 bg-white rounded-xl shadow-sm"><AlertCircle className="mx-auto text-red-500 mb-2" size={32} /><p className="text-slate-600 font-bold">{mapError}</p><button onClick={onCancel} className="mt-4 px-4 py-2 bg-slate-200 rounded-lg text-sm">關閉</button></div> : <div ref={mapRef} className="w-full h-full" />}
-        {!mapError && <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full text-xs font-bold text-slate-600 shadow-lg pointer-events-none border border-slate-100">點擊地圖或拖曳紅點來移動</div>}
+        {mapError ? <div className="text-center p-6"><AlertCircle size={32} className="mx-auto text-red-500 mb-2"/><p>{mapError}</p></div> : <div ref={mapRef} className="w-full h-full" />}
       </div>
-      <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
+      <div className="absolute bottom-0 w-full p-4 space-y-3 bg-white border-t rounded-t-3xl shadow-lg">
          <div className="flex gap-2">
-             <input type="text" value={addressInput} onChange={(e) => setAddressInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()} placeholder="輸入地標或地址 (例: 台北101, 台中歌劇院)" className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500" />
-             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex-shrink-0">搜尋</button>
+             <input type="text" value={addressInput} onChange={(e) => setAddressInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddressSearch()} placeholder="搜尋地點..." className="flex-1 bg-stone-50 border rounded-xl px-4 py-3" />
+             <button onClick={handleAddressSearch} className="bg-stone-800 text-white px-4 py-2 rounded-xl font-bold">搜尋</button>
          </div>
-         {foundPlaceName && (<div className="bg-orange-50 px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-bold text-orange-700 animate-in fade-in"><Check size={14} /><span>定位至: {foundPlaceName}</span></div>)}
-         <div className="flex justify-between text-xs text-slate-500 px-1 pt-1"><span>經度: {selectedLoc?.lng.toFixed(5)}</span><span>緯度: {selectedLoc?.lat.toFixed(5)}</span></div>
+         {foundPlaceName && <div className="bg-orange-50 px-3 py-2 rounded-lg text-xs font-bold text-orange-700">📍 {foundPlaceName}</div>}
          <div className="flex gap-2">
-            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors"><Locate size={18}/> 真實 GPS</button>
-            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-orange-200 active:scale-95 transition-all">確認此地點</button>
+            <button onClick={() => { if(userLocation) { setSelectedLoc(userLocation); setFoundPlaceName("我的位置"); onConfirm(userLocation); } }} className="flex-1 py-3 bg-teal-50 text-teal-600 rounded-xl font-bold flex items-center justify-center gap-2"><Locate size={18}/> GPS</button>
+            <button onClick={() => onConfirm(selectedLoc)} className="flex-[2] py-3 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-bold shadow-lg">確認地點</button>
          </div>
       </div>
     </div>
@@ -308,16 +285,14 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
     const spinWheel = () => {
         if (isSpinning) return;
-        setIsSpinning(true);
-        setResult(null);
-        const randomOffset = Math.random() * 360;
-        const totalRotation = 1800 + randomOffset;
+        setIsSpinning(true); setResult(null);
+        const totalRotation = 1800 + Math.random() * 360;
         setWheelRotation(prev => prev + totalRotation);
         setTimeout(() => {
             const normalizedRotation = totalRotation % 360;
             const targetAngle = (360 - normalizedRotation) % 360;
             const sliceAngle = 360 / candidates.length;
-            const winningIndex = Math.floor(targetAngle / sliceAngle);
+            const winningIndex = Math.floor(((360 - normalizedRotation) % 360) / sliceAngle);
             setResult(candidates[winningIndex]);
             setIsSpinning(false);
         }, 4000); 
@@ -385,22 +360,15 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
     const renderWheelSlice = (index, total) => {
         const angle = 360 / total;
-        const rotation = index * angle;
-        const x1 = 50 + 50 * Math.cos(Math.PI * (rotation - 90) / 180);
-        const y1 = 50 + 50 * Math.sin(Math.PI * (rotation - 90) / 180);
-        const x2 = 50 + 50 * Math.cos(Math.PI * (rotation + angle - 90) / 180);
-        const y2 = 50 + 50 * Math.sin(Math.PI * (rotation + angle - 90) / 180);
-        const largeArc = angle > 180 ? 1 : 0;
-        const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 ${largeArc} 1 ${x2} ${y2} Z`;
-        const midAngle = rotation + angle / 2;
+        const midAngle = (index * angle) + angle / 2;
+        const x1 = 50 + 50 * Math.cos(Math.PI * ((index * angle) - 90) / 180);
+        const y1 = 50 + 50 * Math.sin(Math.PI * ((index * angle) - 90) / 180);
+        const x2 = 50 + 50 * Math.cos(Math.PI * (((index + 1) * angle) - 90) / 180);
+        const y2 = 50 + 50 * Math.sin(Math.PI * (((index + 1) * angle) - 90) / 180);
         return (
             <g key={index}>
-                <path d={pathData} fill={WHEEL_COLORS[index % WHEEL_COLORS.length]} stroke="white" strokeWidth="0.5" />
-                <g transform={`rotate(${midAngle}, 50, 50) translate(0, -35)`}>
-                      <text x="50" y="50" fontSize="4" fontWeight="bold" fill="#333" textAnchor="middle" transform="rotate(90, 50, 50)" style={{pointerEvents: 'none'}}>
-                         {candidates[index].name.length > 6 ? candidates[index].name.substring(0,6)+'..' : candidates[index].name}
-                      </text>
-                </g>
+                <path d={`M 50 50 L ${x1} ${y1} A 50 50 0 ${angle > 180 ? 1 : 0} 1 ${x2} ${y2} Z`} fill={WHEEL_COLORS[index % WHEEL_COLORS.length]} stroke="white" strokeWidth="0.5" />
+                <text x="50" y="50" fontSize="4" fontWeight="bold" fill="#333" textAnchor="middle" transform={`rotate(${midAngle}, 50, 50) translate(0, -35) rotate(90, 50, 50)`}>{candidates[index].name.substring(0,6)}</text>
             </g>
         );
     };
@@ -416,7 +384,7 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                     <button onClick={() => {setMode('wheel'); setResult(null); setIsSpinning(false);}} className={`flex-1 py-3 font-bold text-sm ${mode==='wheel' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>幸運轉盤</button>
                     <button onClick={() => {setMode('ladder'); setResult(null); setIsSpinning(false);}} className={`flex-1 py-3 font-bold text-sm ${mode==='ladder' ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-500' : 'text-stone-400 hover:bg-stone-50'}`}>爬梯子</button>
                 </div>
-                <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-hidden bg-stone-50 relative min-h-[350px]">
+                <div className="flex-1 p-6 flex flex-col items-center justify-center bg-stone-50 min-h-[350px]">
                     {mode === 'wheel' && (
                         <div className="relative w-64 h-64">
                             <div className="w-full h-full rounded-full shadow-xl overflow-hidden border-4 border-white" style={{ transform: `rotate(${wheelRotation}deg)`, transition: isSpinning ? 'transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none' }}>
@@ -424,62 +392,36 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
                                     {candidates.map((_, i) => renderWheelSlice(i, candidates.length))}
                                 </svg>
                             </div>
-                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-10 z-10 filter drop-shadow-md">
-                                <div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[20px] border-t-red-600"></div>
-                            </div>
-                            <button onClick={spinWheel} disabled={isSpinning} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center font-black text-stone-800 border-4 border-stone-100 z-20 hover:scale-105 active:scale-95 transition-all disabled:opacity-80">
-                                {isSpinning ? '...' : 'GO'}
-                            </button>
+                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-10 z-10"><div className="w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[20px] border-t-red-600"></div></div>
+                            <button onClick={spinWheel} disabled={isSpinning} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-white rounded-full shadow-lg flex items-center justify-center font-black text-stone-800 border-4 border-stone-100 z-20">GO</button>
                         </div>
                     )}
                     {mode === 'ladder' && (
                         <div className="w-full h-full flex flex-col bg-white rounded-xl border border-stone-200 p-4 select-none relative min-h-[400px]">
                             <div className="flex justify-between mb-4 relative z-10">
-                                {candidates.map((_, i) => (
-                                    <button key={i} onClick={() => startLadder(i)} disabled={isSpinning} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm transition-all relative ${selectedLadderStart === i ? 'bg-orange-500 text-white scale-110 ring-2 ring-orange-200' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'} ${isSpinning && selectedLadderStart !== i ? 'opacity-30' : ''}`}>
-                                            {i+1}
-                                    </button>
-                                ))}
+                                {candidates.map((_, i) => <button key={i} onClick={() => startLadder(i)} disabled={isSpinning} className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm transition-all relative ${selectedLadderStart === i ? 'bg-orange-500 text-white' : 'bg-stone-100 text-stone-500'}`}>{i+1}</button>)}
                             </div>
                             <div className="flex-1 relative w-full mb-8">
                                 <svg className="absolute inset-0 w-full h-full" style={{overflow: 'visible'}}>
-                                    {candidates.map((_, i) => { const x = (i / (candidates.length - 1)) * 100; return <line key={i} x1={`${x}%`} y1="0%" x2={`${x}%`} y2="100%" stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />; })}
+                                    {candidates.map((_, i) => { const x = (i / (candidates.length - 1)) * 100; return <line key={i} x1={`${x}%`} y1="0%" x2={`${x}%`} y2="100%" stroke="#94a3b8" strokeWidth="4" />; })}
                                     {ladderPaths.map((row, rIdx) => {
                                         const y = ((rIdx + 1) / (ladderPaths.length + 1)) * 100;
-                                        return row.map((hasBridge, cIdx) => hasBridge && (
-                                            <line key={`${rIdx}-${cIdx}`} x1={`${(cIdx / (candidates.length - 1)) * 100}%`} y1={`${y}%`} x2={`${((cIdx + 1) / (candidates.length - 1)) * 100}%`} y2={`${y}%`} stroke="#94a3b8" strokeWidth="4" strokeLinecap="round" />
-                                        ));
+                                        return row.map((hasBridge, cIdx) => hasBridge && <line key={`${rIdx}-${cIdx}`} x1={`${(cIdx / (candidates.length - 1)) * 100}%`} y1={`${y}%`} x2={`${((cIdx + 1) / (candidates.length - 1)) * 100}%`} y2={`${y}%`} stroke="#94a3b8" strokeWidth="4" />);
                                     })}
-                                    {ladderActivePath.length > 0 && (
-                                        <>
-                                            <polyline points={ladderActivePath.map(p => { const x = (p.lane / (candidates.length - 1)) * 100; const y = (p.step / (ladderPaths.length + 1)) * 100; return `${x}%,${y}%`; }).join(' ')} fill="none" stroke="#f97316" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-sm" />
-                                            {(() => { const last = ladderActivePath[ladderActivePath.length - 1]; const x = (last.lane / (candidates.length - 1)) * 100; const y = (last.step / (ladderPaths.length + 1)) * 100; return <circle cx={`${x}%`} cy={`${y}%`} r="6" fill="#ef4444" className="animate-pulse"/>; })()}
-                                        </>
-                                    )}
+                                    {ladderActivePath.length > 0 && <polyline points={ladderActivePath.map(p => { const x = (p.lane / (candidates.length - 1)) * 100; const y = (p.step / (ladderPaths.length + 1)) * 100; return `${x}%,${y}%`; }).join(' ')} fill="none" stroke="#f97316" strokeWidth="4" />}
                                 </svg>
                             </div>
                             <div className="flex justify-between relative mt-auto">
-                                {candidates.map((c, i) => (
-                                    <div key={i} className={`w-10 text-[10px] text-center truncate font-bold leading-tight transition-all absolute top-0 transform -translate-x-1/2 ${ladderResultIndex === i ? 'text-red-600 scale-110 z-10 bg-white shadow-sm p-1 rounded border border-red-100' : 'text-stone-400'}`} style={{ left: `${(i / (candidates.length - 1)) * 100}%` }}>
-                                            {c.name}
-                                    </div>
-                                ))}
+                                {candidates.map((c, i) => <div key={i} className={`w-10 text-[10px] text-center truncate font-bold absolute top-0 transform -translate-x-1/2 ${ladderResultIndex === i ? 'text-red-600' : 'text-stone-400'}`} style={{ left: `${(i / (candidates.length - 1)) * 100}%` }}>{c.name}</div>)}
                             </div>
-                            {!isSpinning && !result && !selectedLadderStart && (
-                                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/90 px-4 py-2 rounded-xl text-xs font-bold text-stone-500 shadow-sm border border-stone-100 z-20 pointer-events-none">
-                                    請點擊上方數字選擇起點
-                                </div>
-                            )}
                         </div>
                     )}
                     {result && !isSpinning && (
                         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in zoom-in">
-                            <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-3/4 border-4 border-yellow-400 transform rotate-1">
+                            <div className="bg-white p-6 rounded-2xl shadow-2xl text-center w-3/4 border-4 border-yellow-400">
                                 <div className="text-4xl mb-2">🎉</div>
-                                <div className="text-xs font-bold text-stone-400 mb-1">命運的選擇是</div>
                                 <div className="text-xl font-black text-stone-800 mb-4">{result.name}</div>
-                                <div className="bg-stone-50 p-2 rounded-lg text-xs text-stone-500 mb-4">{result.address}</div>
-                                <button onClick={() => { setResult(null); if(mode==='ladder'){ setLadderActivePath([]); setSelectedLadderStart(null); setLadderResultIndex(-1); } }} className="text-sm font-bold text-orange-500 hover:text-orange-600 underline">再玩一次</button>
+                                <button onClick={() => setResult(null)} className="text-sm font-bold text-orange-500 hover:text-orange-600 underline">再玩一次</button>
                             </div>
                         </div>
                     )}
@@ -491,24 +433,16 @@ const DecisionMakerModal = ({ candidates, onClose }) => {
 
 const ProfileModal = ({ userProfile, setUserProfile, onClose }) => {
   const [localName, setLocalName] = useState(userProfile.name);
-  const avatarSeeds = ["Felix", "Maria", "Jack", "Aneka", "Jocelyn", "Granny", "Bear", "Leo", "Zoe", "Max", "Luna", "Tiger"];
-  const handleFileUpload = (e) => { const file = e.target.files[0]; if (file) { const url = URL.createObjectURL(file); setUserProfile(prev => ({ ...prev, customAvatar: url })); } };
-
   return (
     <div className="fixed inset-0 z-[80] bg-stone-900/80 flex items-center justify-center p-4 animate-in fade-in font-rounded backdrop-blur-sm">
-      <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 relative max-h-[90vh] overflow-y-auto shadow-2xl border border-white/50">
-        <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-stone-100 rounded-full hover:bg-stone-200"><X size={20}/></button>
+      <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 relative">
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-stone-100 rounded-full"><X size={20}/></button>
         <h2 className="text-xl font-black text-stone-800 mb-6 text-center">設定個人檔案</h2>
         <div className="flex flex-col items-center gap-4 mb-6">
-          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-orange-200 relative group shadow-lg ring-4 ring-orange-50">
-             <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Avatar" className="w-full h-full object-cover" />
-             <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs font-bold backdrop-blur-sm"><Camera size={24} className="mb-1"/><input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} /></label>
-          </div>
-          <input type="text" value={localName} onChange={(e) => setLocalName(e.target.value)} className="text-center font-bold text-xl border-b-2 border-stone-200 focus:border-orange-500 outline-none pb-2 w-3/4 bg-transparent transition-colors" placeholder="輸入暱稱"/>
+          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-orange-200"><img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} className="w-full h-full object-cover" /></div>
+          <input type="text" value={localName} onChange={(e) => setLocalName(e.target.value)} className="text-center font-bold text-xl border-b-2 border-stone-200 outline-none pb-2 w-3/4" placeholder="輸入暱稱"/>
         </div>
-        <div className="space-y-3 mb-6"><label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">形象風格</label><div className="flex gap-3 bg-stone-100 p-1 rounded-2xl"><button onClick={() => setUserProfile({...userProfile, gender: 'male', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'male' && !userProfile.customAvatar ? 'bg-white text-blue-600 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}><User size={18} /> 男生</button><button onClick={() => setUserProfile({...userProfile, gender: 'female', customAvatar: null})} className={`flex-1 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${userProfile.gender === 'female' && !userProfile.customAvatar ? 'bg-white text-rose-500 shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}><User size={18} /> 女生</button></div></div>
-        <div className="space-y-3"><label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">快速選擇頭像</label><div className="grid grid-cols-4 gap-3">{avatarSeeds.map(seed => (<div key={seed} onClick={() => setUserProfile({...userProfile, customAvatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`})} className="aspect-square rounded-2xl bg-stone-50 overflow-hidden cursor-pointer hover:ring-4 hover:ring-rose-200 transition-all shadow-sm border border-stone-100"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`} className="w-full h-full object-cover" /></div>))}</div></div>
-        <button onClick={() => { setUserProfile(prev => ({...prev, name: localName})); onClose(); }} className="w-full mt-8 bg-stone-800 text-white py-4 rounded-2xl font-bold shadow-lg shadow-stone-300 hover:bg-stone-700 active:scale-95 transition-all">儲存設定</button>
+        <button onClick={() => { setUserProfile(prev => ({...prev, name: localName})); onClose(); }} className="w-full mt-8 bg-stone-800 text-white py-4 rounded-2xl font-bold shadow-lg">儲存設定</button>
       </div>
     </div>
   );
@@ -524,42 +458,32 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
         setLoading(true);
         try {
             const { Place } = await google.maps.importLibrary("places");
-            const { places } = await Place.searchByText({
-                textQuery: queryText,
-                fields: ['id', 'displayName', 'types', 'rating', 'userRatingCount', 'priceLevel', 'regularOpeningHours', 'location', 'formattedAddress', 'photos', 'utcOffsetMinutes'],
-                locationBias: virtualLocation ? { center: { lat: virtualLocation.lat, lng: virtualLocation.lng }, radius: 1000 } : undefined,
-                maxResultCount: 10,
-            });
-            const formatted = await Promise.all(places.map(async (place) => {
-                let photoUrl = null;
-                if (place.photos && place.photos.length > 0) photoUrl = place.photos[0].getURI({ maxWidth: 200 });
-                let isOpenStatus = null;
-                try { isOpenStatus = await place.isOpen(); } catch(e) {}
-                return {
-                    id: place.id, name: place.displayName, type: mapGoogleTypeToCategory(place.types), rating: place.rating, priceLevel: place.priceLevel, address: place.formattedAddress, photoUrl, isOpen: isOpenStatus, lat: place.location.lat(), lng: place.location.lng(), regularOpeningHours: place.regularOpeningHours 
-                };
-            }));
+            const { places } = await Place.searchByText({ textQuery: queryText, locationBias: virtualLocation ? { center: virtualLocation, radius: 1000 } : undefined });
+            const formatted = await Promise.all(places.map(async (place) => ({
+                id: place.id, name: place.displayName, address: place.formattedAddress, rating: place.rating, 
+                photoUrl: place.photos && place.photos.length > 0 ? place.photos[0].getURI({ maxWidth: 200 }) : null,
+                lat: place.location.lat(), lng: place.location.lng()
+            })));
             setResults(formatted);
-        } catch(e) { console.error(e); alert("搜尋失敗"); setLoading(false); }
+        } catch(e) { console.error(e); alert("搜尋失敗"); } finally { setLoading(false); }
     };
 
     return (
         <div className="fixed inset-0 bg-stone-900/50 z-[80] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-md h-[80vh] flex flex-col shadow-2xl animate-in zoom-in font-rounded overflow-hidden">
                 <div className="p-4 border-b border-stone-100 flex items-center gap-2">
-                    <input className="flex-1 bg-stone-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500" placeholder="輸入餐廳名稱..." value={queryText} onChange={e => setQueryText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} autoFocus />
-                    <button onClick={onClose} className="p-3 bg-stone-100 rounded-xl hover:bg-stone-200"><X size={20}/></button>
+                    <input className="flex-1 bg-stone-100 rounded-xl px-4 py-3 outline-none" placeholder="輸入餐廳名稱..." value={queryText} onChange={e => setQueryText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} autoFocus />
+                    <button onClick={onClose} className="p-3 bg-stone-100 rounded-xl"><X size={20}/></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-stone-50">
                     {loading && <div className="text-center text-stone-400 py-10">搜尋中...</div>}
                     {results.map(r => (
-                        <div key={r.id} onClick={() => onSelect(r)} className="bg-white p-3 rounded-xl border border-stone-200 shadow-sm flex gap-3 cursor-pointer hover:border-orange-300 transition-colors">
-                            <div className="w-16 h-16 bg-stone-100 rounded-lg flex-shrink-0 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-stone-300 text-xl font-bold">{r.name.charAt(0)}</div>}</div>
-                            <div className="flex-1 min-w-0"><h4 className="font-bold text-stone-800 truncate">{r.name}</h4><div className="flex items-center gap-2 mt-1"><span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">{r.type}</span><span className="text-xs text-stone-500 truncate">{r.address}</span></div></div>
+                        <div key={r.id} onClick={() => onSelect(r)} className="bg-white p-3 rounded-xl border border-stone-200 shadow-sm flex gap-3 cursor-pointer hover:border-orange-300">
+                            <div className="w-16 h-16 bg-stone-100 rounded-lg flex-shrink-0 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center font-bold text-stone-300">{r.name.charAt(0)}</div>}</div>
+                            <div className="flex-1 min-w-0"><h4 className="font-bold text-stone-800 truncate">{r.name}</h4><div className="text-xs text-stone-500 truncate">{r.address}</div></div>
                             <button className="self-center p-2 bg-orange-50 text-orange-500 rounded-full"><Plus size={18}/></button>
                         </div>
                     ))}
-                    {!loading && results.length === 0 && <div className="text-center text-slate-400 py-10 text-sm">輸入關鍵字尋找餐廳<br/>點擊 + 加入共同清單</div>}
                 </div>
             </div>
         </div>
@@ -568,396 +492,138 @@ const RoomRestaurantSearchModal = ({ onClose, onSelect, virtualLocation }) => {
 
 const SocialView = ({ userProfile, room, setRoom, messages, setMessages, db, onBack, addToSharedList, removeFromSharedList, setShowDetail, virtualLocation, sharedRestaurants, updateSharedItemStatus }) => {
   const [msgInput, setMsgInput] = useState("");
-  const [subTab, setSubTab] = useState("chat"); 
   const messagesEndRef = useRef(null);
   const [showSearchModal, setShowSearchModal] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("全部");
-  const [customCategories, setCustomCategories] = useState([]);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedForDecision, setSelectedForDecision] = useState([]);
   const [showDecisionModal, setShowDecisionModal] = useState(false);
-
-  const getAvatarUrl = () => { if (userProfile.customAvatar) return userProfile.customAvatar; const seed = userProfile.gender === 'male' ? 'Felix' : 'Maria'; return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`; };
+  const [selectedForDecision, setSelectedForDecision] = useState([]);
+  const [subTab, setSubTab] = useState("chat");
 
   useEffect(() => { if(subTab === 'chat' && messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, subTab]);
 
-  const handleRenameRoom = async () => {
-      const newName = prompt("請輸入新的房間名稱：", room.name);
-      if (newName && newName.trim() && db) {
-          try { await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id), { name: newName.trim() }); setRoom(prev => ({ ...prev, name: newName.trim() })); } catch (e) { alert("改名失敗"); }
-      }
-  };
-
-  const handleAddRestaurantFromSearch = async (restaurantData) => { await addToSharedList(restaurantData); setShowSearchModal(false); };
-
-  const handleEditCategory = async (itemId, currentCat) => {
-      const newCat = prompt("請輸入新的分類名稱：", currentCat);
-      if (newCat && newCat.trim() && db) {
-          try {
-              const ref = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", itemId);
-              await updateDoc(ref, { type: newCat.trim() });
-          } catch(e) { console.error(e); }
-      }
-  };
-
-  const sendMessage = async (text) => {
-      if (!text.trim()) return;
-      const msgData = { sender: userProfile.name, avatar: getAvatarUrl(), text: text, type: 'text', createdAt: new Date() };
-      if (db && room) await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages"), msgData); else setMessages(prev => [...prev, { id: Date.now(), ...msgData }]);
-  };
-
-  const voteForMessage = async (msgId, currentVoters, currentVotes) => {
-      if (currentVoters && currentVoters.includes(userProfile.name)) return;
-      if (db && room) { const msgRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votes: (currentVotes || 0) + 1, voters: arrayUnion(userProfile.name) }); }
-  };
-
-  const enableVoting = async (msgId) => { if (db && room) { const msgRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages", msgId); await updateDoc(msgRef, { votingEnabled: true }); } };
-
-  const copyInviteLink = () => { if (!room) return; const url = `${window.location.origin}${window.location.pathname}?room=${room.code}`; if (navigator.share) navigator.share({ title: '加入美食團', text: `加入代碼：${room.code}`, url }).catch(console.error); else { navigator.clipboard.writeText(url); alert("連結已複製！"); } };
-
-  const availableCategories = ['全部', ...new Set([...DEFAULT_CATEGORIES.slice(1), ...sharedRestaurants.map(r => r.type), ...customCategories])];
-  const filteredSharedList = selectedCategory === '全部' ? sharedRestaurants : sharedRestaurants.filter(r => r.type === selectedCategory);
-
-  const toggleSelection = (id) => {
-      if (selectedForDecision.includes(id)) {
-          setSelectedForDecision(selectedForDecision.filter(itemId => itemId !== id));
-      } else {
-          setSelectedForDecision([...selectedForDecision, id]);
-      }
-  };
-
-  const startDecision = () => {
-      if (selectedForDecision.length < 2) {
-          alert("請至少選擇 2 間餐廳來進行抽籤！");
-          return;
-      }
-      setShowDecisionModal(true);
-  };
-
-  const handleAddCategory = () => {
-      const newCat = prompt("請輸入新的分類名稱：");
-      if (newCat && newCat.trim() && !availableCategories.includes(newCat.trim())) {
-          setCustomCategories(prev => [...prev, newCat.trim()]);
-          setSelectedCategory(newCat.trim());
-      }
+  const sendMessage = async () => {
+      if (!msgInput.trim()) return;
+      // 自動切換路徑
+      if (db && room) await addDoc(getSmartCollection(db, "rooms", room.id, "messages"), { sender: userProfile.name, text: msgInput, type: 'text', createdAt: new Date() });
+      setMsgInput("");
   };
 
   return (
     <div className="flex flex-col h-full bg-stone-50 relative">
-       {showDecisionModal && (
-           <DecisionMakerModal 
-               candidates={sharedRestaurants.filter(r => selectedForDecision.includes(r.id))} 
-               onClose={() => setShowDecisionModal(false)}
-           />
-       )}
-
+       {showDecisionModal && <DecisionMakerModal candidates={sharedRestaurants.filter(r => selectedForDecision.includes(r.id))} onClose={() => setShowDecisionModal(false)} />}
        <div className="bg-white/90 backdrop-blur px-4 py-3 shadow-sm flex justify-between items-center z-10 border-b border-stone-200">
-          <div className="flex items-center gap-2">
-            <button onClick={onBack} className="p-2 -ml-2 text-stone-500 hover:bg-stone-100 rounded-full"><ChevronLeft size={24}/></button>
-            <div>
-                <h3 className="font-bold text-stone-800 flex items-center gap-2 text-lg">
-                  {room.name}
-                  <button onClick={handleRenameRoom} className="p-1 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-100"><Edit2 size={16}/></button>
-                </h3>
-                <span className="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-extrabold">#{room.code}</span>
-            </div>
-          </div>
-          <div className="flex gap-2">
-             <button onClick={copyInviteLink} className="p-2 text-teal-600 bg-teal-50 rounded-full hover:bg-teal-100 transition-colors"><LinkIcon size={20} /></button>
-             <button onClick={() => setRoom(null)} className="p-2 text-stone-400 hover:bg-stone-100 rounded-full transition-colors"><LogOut size={20} /></button>
-          </div>
+          <button onClick={onBack} className="p-2 -ml-2 text-stone-500 rounded-full"><ChevronLeft size={24}/></button>
+          <span className="font-bold text-lg">{room.name} (#{room.code})</span>
+          <button onClick={() => setRoom(null)} className="p-2 text-stone-400 rounded-full"><LogOut size={20}/></button>
        </div>
-
        <div className="flex bg-white border-b border-stone-200 shrink-0">
-          <button onClick={() => setSubTab('chat')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'chat' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}><MessageCircle size={16}/> 聊天室</button>
-          <button onClick={() => setSubTab('list')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 ${subTab === 'list' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}><List size={16}/> 共同清單</button>
+          <button onClick={() => setSubTab('chat')} className={`flex-1 py-3 text-sm font-bold ${subTab === 'chat' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}>聊天室</button>
+          <button onClick={() => setSubTab('list')} className={`flex-1 py-3 text-sm font-bold ${subTab === 'list' ? 'text-orange-600 border-b-2 border-orange-600' : 'text-stone-400'}`}>共同清單</button>
        </div>
-       
-       <div className="flex-1 overflow-y-auto relative scroll-smooth">
+       <div className="flex-1 overflow-y-auto relative scroll-smooth p-4">
           {subTab === 'chat' ? (
-              <div className="p-4 space-y-6 pb-24">
-                  {messages.map((msg) => {
-                      if (msg.type === 'system') return <div key={msg.id} className="text-center text-xs text-stone-400 my-4"><span className="bg-stone-200/50 px-3 py-1 rounded-full">{msg.text}</span></div>
-                      const isMe = msg.sender === userProfile.name;
-                      return (
-                          <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group`}>
-                              {!isMe && <div className="w-8 h-8 rounded-full bg-stone-200 overflow-hidden flex-shrink-0 border-2 border-white shadow-sm mt-1"><img src={msg.avatar} className="w-full h-full object-cover" /></div>}
-                              <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                  <span className="text-[10px] text-stone-400 mb-1 px-1">{msg.sender}</span>
-                                  {msg.type === 'text' ? (
-                                      <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMe ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white rounded-tr-sm' : 'bg-white text-stone-800 border border-stone-200 rounded-tl-sm'}`}>{msg.text}</div>
-                                  ) : (
-                                      <div onClick={() => setShowDetail(msg.restaurant)} className={`bg-white p-3 rounded-2xl border ${isMe ? 'border-orange-100' : 'border-stone-200'} shadow-sm w-60 overflow-hidden cursor-pointer`}>
-                                          <div className="w-full h-32 bg-stone-100 rounded-xl mb-3 overflow-hidden relative">
-                                              {msg.restaurant.photoUrl ? <img src={msg.restaurant.photoUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl text-stone-300 font-bold bg-stone-50">{msg.restaurant.name.charAt(0)}</div>}
-                                          </div>
-                                          <h4 className="font-bold text-stone-800 truncate text-lg mb-0.5">{msg.restaurant.name}</h4>
-                                          {msg.votingEnabled ? (
-                                              <button onClick={(e) => { e.stopPropagation(); voteForMessage(msg.id, msg.voters, msg.votes); }} className={`w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all mt-2 ${msg.voters?.includes(userProfile.name) ? 'bg-teal-500 text-white' : 'bg-stone-50 text-stone-600'}`}><ThumbsUp size={14}/> {msg.votes > 0 ? `${msg.votes} 人想吃` : '投一票'}</button>
-                                          ) : (
-                                              <button onClick={(e) => { e.stopPropagation(); enableVoting(msg.id); }} className="w-full py-2.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-orange-100 mt-2"><Vote size={14} /> 發起投票</button>
-                                          )}
-                                          <button onClick={(e) => { e.stopPropagation(); addToSharedList(msg.restaurant); }} className="w-full mt-2 py-2 text-xs text-stone-400 hover:text-stone-600 border-t border-stone-100 flex items-center justify-center gap-1"><List size={12}/> 加入共同清單</button>
-                                      </div>
-                                  )}
-                              </div>
-                          </div>
-                      )
-                  })}
+              <div className="space-y-4 pb-20">
+                  {messages.map((msg, i) => (
+                      <div key={i} className={`flex gap-3 ${msg.sender === userProfile.name ? 'flex-row-reverse' : ''}`}>
+                          <div className={`px-4 py-2 rounded-2xl text-sm ${msg.sender === userProfile.name ? 'bg-orange-500 text-white' : 'bg-white text-stone-800 shadow-sm'}`}>{msg.text}</div>
+                      </div>
+                  ))}
                   <div ref={messagesEndRef} />
               </div>
           ) : (
-              <div className="p-4 space-y-4 pb-32">
-                  <div className="sticky top-0 bg-stone-50 z-10 pb-2 space-y-2">
-                     <CategoryTabs categories={availableCategories} selected={selectedCategory} onSelect={setSelectedCategory} onAddCategory={handleAddCategory} />
-                     <div className="flex gap-2">
-                         <button onClick={() => setSelectionMode(!selectionMode)} className={`flex-1 py-2 rounded-xl font-bold text-xs border ${selectionMode ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-600 border-stone-200'}`}>
-                             {selectionMode ? '取消挑選' : '開啟挑選模式 (轉盤/爬梯子)'}
-                         </button>
-                         {selectionMode && (
-                             <button onClick={startDecision} className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl text-xs shadow-md animate-bounce">
-                                 開始決定 ({selectedForDecision.length})
-                             </button>
-                         )}
-                     </div>
-                  </div>
-                  
-                  {!selectionMode && (
-                      <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-stone-300 rounded-xl text-stone-400 font-bold flex items-center justify-center gap-2 hover:border-orange-300 hover:text-orange-500 transition-colors"><Plus size={20}/> 新增餐廳到清單</button>
-                  )}
-
-                  {filteredSharedList.map(item => (
-                      <div key={item.id} className={`bg-white p-4 rounded-2xl border shadow-sm space-y-3 relative group transition-all ${selectionMode && selectedForDecision.includes(item.id) ? 'border-orange-500 ring-2 ring-orange-100' : 'border-stone-100'}`}>
-                          
-                          {selectionMode && (
-                              <div className="absolute top-4 right-4 z-20">
-                                  <div onClick={() => toggleSelection(item.id)} className={`w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer ${selectedForDecision.includes(item.id) ? 'bg-orange-500 border-orange-500 text-white' : 'border-stone-300 bg-white'}`}>
-                                      {selectedForDecision.includes(item.id) && <Check size={14} strokeWidth={4} />}
-                                  </div>
-                              </div>
-                          )}
-
-                          <div className="flex justify-between items-start cursor-pointer" onClick={() => !selectionMode && setShowDetail(item)}>
-                              <div className="flex gap-3">
-                                  <div className="w-12 h-12 bg-stone-100 rounded-lg overflow-hidden flex-shrink-0">{item.photoUrl ? <img src={item.photoUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center font-bold text-stone-300">{item.name.charAt(0)}</div>}</div>
-                                  <div>
-                                      <h4 className="font-bold text-stone-800 text-lg flex items-center gap-1">{item.name}<ArrowRight size={14} className="text-stone-300"/></h4>
-                                      <div className="flex items-center gap-2 mt-1">
-                                          <button onClick={(e) => { e.stopPropagation(); handleEditCategory(item.id, item.type); }} className="text-[10px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded flex items-center gap-0.5 hover:bg-orange-100"><Tag size={10}/> {item.type} <Edit2 size={8}/></button>
-                                          <p className="text-xs text-stone-400">新增: {item.addedBy}</p>
-                                      </div>
-                                  </div>
-                              </div>
-                              {!selectionMode && <button onClick={(e) => { e.stopPropagation(); removeFromSharedList(item); }} className="text-stone-300 hover:text-red-400 p-2"><Trash2 size={16}/></button>}
+              <div className="space-y-4 pb-32">
+                  <button onClick={() => setShowSearchModal(true)} className="w-full py-3 bg-white border-2 border-dashed border-stone-300 rounded-xl text-stone-400 font-bold flex items-center justify-center gap-2"><Plus size={20}/> 新增餐廳</button>
+                  {sharedRestaurants.map(item => (
+                      <div key={item.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
+                          <div className="flex justify-between">
+                              <h4 className="font-bold text-stone-800">{item.name}</h4>
+                              <button onClick={() => removeFromSharedList(item)}><Trash2 size={16} className="text-stone-300"/></button>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                              <div className="bg-stone-50 p-2 rounded-xl"><span className="text-[10px] font-bold text-stone-400 block mb-1">我的狀態</span><div className="flex gap-1"><button onClick={() => updateSharedItemStatus(item.id, 'eaten', true)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-stone-200 text-stone-400'}`}><CheckCircle size={10}/> 吃過</button><button onClick={() => updateSharedItemStatus(item.id, 'eaten', false)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors ${item.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-stone-200 text-stone-400'}`}><Circle size={10}/> 沒吃</button></div></div>
-                              <div className="bg-stone-50 p-2 rounded-xl">
-                                <div className="flex justify-between items-center mb-1">
-                                  <span className="text-[10px] font-bold text-stone-400">我的評分</span>
-                                  {item.ratings && Object.keys(item.ratings).length > 0 && <span className="text-[10px] font-bold text-yellow-600 bg-yellow-100 px-1.5 rounded-md">均 {(Object.values(item.ratings).reduce((a,b)=>a+b,0) / Object.values(item.ratings).length).toFixed(1)}</span>}
-                                </div>
-                               
-                                <div className="space-y-1 mb-2 max-h-20 overflow-y-auto custom-scrollbar">
-                                    {item.ratings && Object.entries(item.ratings).map(([user, score]) => (
-                                        <div key={user} className="flex justify-between text-[10px] items-center text-stone-500">
-                                            <span>{user}</span>
-                                            <span className="flex items-center gap-0.5 text-yellow-500 font-bold"><Star size={8} fill="currentColor"/> {score}</span>
-                                        </div>
-                                    ))}
-                                    {(!item.ratings || Object.keys(item.ratings).length === 0) && <div className="text-[10px] text-stone-300 text-center py-1">尚無評分</div>}
-                                </div>
-
-                                <div className="flex justify-center border-t border-stone-200 pt-2">
-                                    <InteractiveStarRating value={item.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(item.id, 'rating', val)} />
-                                </div>
-                              </div>
+                          <div className="flex justify-between items-center text-xs text-stone-500">
+                              <span>{item.address}</span>
+                              <div className="flex items-center gap-1"><Star size={12} className="text-yellow-400 fill-yellow-400"/> {item.rating}</div>
                           </div>
                       </div>
                   ))}
+                  <button onClick={() => { setSelectedForDecision(sharedRestaurants.map(r=>r.id)); setShowDecisionModal(true); }} className="w-full py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold rounded-xl shadow-md">開始轉盤</button>
               </div>
           )}
        </div>
-
        {subTab === 'chat' && (
            <div className="p-3 bg-white border-t border-stone-200 flex gap-2 items-center shrink-0">
-              <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (sendMessage(msgInput), setMsgInput(""))} className="flex-1 bg-stone-100 rounded-full px-5 py-3 text-sm outline-none focus:ring-2 focus:ring-orange-500 transition-shadow" placeholder="輸入訊息..." />
-              <button onClick={() => { sendMessage(msgInput); setMsgInput(""); }} className={`p-3 rounded-full transition-all shadow-md ${msgInput.trim() ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-stone-200 text-stone-400'}`} disabled={!msgInput.trim()}><Send size={20} /></button>
+              <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)} className="flex-1 bg-stone-100 rounded-full px-5 py-3 outline-none" placeholder="輸入訊息..." />
+              <button onClick={sendMessage} className="p-3 bg-orange-500 text-white rounded-full"><Send size={20}/></button>
            </div>
        )}
-
-       {showSearchModal && <RoomRestaurantSearchModal onClose={() => setShowSearchModal(false)} onSelect={handleAddRestaurantFromSearch} virtualLocation={virtualLocation} />}
+       {showSearchModal && <RoomRestaurantSearchModal onClose={() => setShowSearchModal(false)} onSelect={async (r) => { await addToSharedList(r); setShowSearchModal(false); }} virtualLocation={virtualLocation} />}
     </div>
   );
 };
 
-const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal, onDeleteRoom }) => {
+const LobbyView = ({ userProfile, onJoinRoom, onCreateRoom, myRooms, onEnterRoom, setShowProfileModal, onDeleteRoom, permissionError }) => {
     const [joinCodeInput, setJoinCodeInput] = useState("");
-
+    
     return (
       <div className="p-6 h-full flex flex-col items-center font-rounded bg-gradient-to-b from-stone-100 to-white overflow-y-auto">
-         <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-6 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105 mt-8">
-             <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
-             <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={24}/></div>
-         </div>
-         <h1 className="text-3xl font-black text-stone-800 mb-2">揪團大廳</h1>
-         <p className="text-stone-400 text-sm mb-8">管理你的所有美食房間</p>
-
-         <div className="w-full max-w-sm space-y-6">
-             {myRooms.length > 0 && (
-                 <div className="space-y-3">
-                     <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">已加入的房間</label>
-                     {myRooms.map(r => (
-                         <div key={r.id} onClick={() => onEnterRoom(r)} className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex justify-between items-center group">
-                             <div><h3 className="font-bold text-stone-800">{r.name}</h3><span className="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded font-mono">#{r.code}</span></div>
-                             <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }}
-                                    className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                                >
-                                    <Trash2 size={16}/>
-                                </button>
-                                <ArrowRight size={16} className="text-stone-300 group-hover:text-orange-500"/>
-                             </div>
-                         </div>
-                     ))}
+         <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-6 border-4 border-white shadow-xl cursor-pointer"><img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} className="w-full h-full object-cover" /></div>
+         <h1 className="text-3xl font-black text-stone-800 mb-8">揪團大廳</h1>
+         
+         {permissionError ? (
+             <div className="w-full max-w-sm p-4 bg-red-50 border border-red-200 rounded-2xl mb-6">
+                 <h4 className="font-bold text-red-600 flex items-center gap-2 mb-2"><AlertTriangle size={18}/> 權限設定錯誤</h4>
+                 <p className="text-xs text-red-500 mb-2">無法讀取房間列表。請確認 Firebase Console &gt; Firestore Database &gt; Rules 內容為：</p>
+                 <div className="bg-white border border-red-100 p-2 rounded text-[10px] font-mono text-slate-500 overflow-x-auto relative group">
+                     <pre>{`match /{document=**} { allow read, write: if true; }`}</pre>
+                     <button 
+                        onClick={() => navigator.clipboard.writeText("match /{document=**} { allow read, write: if true; }")} 
+                        className="absolute right-1 top-1 p-1 bg-slate-100 rounded hover:bg-slate-200 opacity-50 group-hover:opacity-100"
+                     >
+                        <Copy size={12}/>
+                     </button>
                  </div>
-             )}
-
-             <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-200 space-y-4">
-                <button onClick={onCreateRoom} className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl font-bold shadow-lg shadow-orange-200 hover:shadow-orange-300 hover:-translate-y-0.5 transition-all active:scale-95 flex items-center justify-center gap-2"><PlusCircle size={20} /> 建立新房間</button>
-                <div className="relative py-2"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-stone-200"></div></div><div className="relative flex justify-center text-xs font-bold text-stone-400 tracking-wider"><span className="px-2 bg-white">或是</span></div></div>
-                <div className="flex gap-2">
-                    <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} placeholder="輸入代碼" className="flex-1 bg-stone-50 border border-stone-200 rounded-2xl px-4 font-bold outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-center" maxLength={4} />
-                    <button onClick={() => onJoinRoom(joinCodeInput)} className="px-6 bg-stone-800 text-white rounded-2xl font-bold shadow-md hover:bg-stone-700 transition-colors">加入</button>
-                </div>
+                 <p className="text-[10px] text-red-400 mt-2">*此設定僅供測試，正式上線請設定安全規則。</p>
              </div>
-         </div>
+         ) : (
+             <div className="w-full max-w-sm space-y-6">
+                 {myRooms.map(r => (
+                     <div key={r.id} onClick={() => onEnterRoom(r)} className="bg-white p-4 rounded-2xl border shadow-sm flex justify-between items-center cursor-pointer">
+                         <div><h3 className="font-bold text-stone-800">{r.name}</h3><span className="text-xs text-stone-500">#{r.code}</span></div>
+                         <button onClick={(e) => { e.stopPropagation(); onDeleteRoom(r.id); }}><Trash2 size={16} className="text-stone-300"/></button>
+                     </div>
+                 ))}
+                 <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-4">
+                    <button onClick={onCreateRoom} className="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold">建立新房間</button>
+                    <div className="flex gap-2">
+                        <input type="text" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} placeholder="輸入代碼" className="flex-1 bg-stone-50 border rounded-2xl px-4 text-center" maxLength={4} />
+                        <button onClick={() => onJoinRoom(joinCodeInput)} className="px-6 bg-stone-800 text-white rounded-2xl font-bold">加入</button>
+                    </div>
+                 </div>
+             </div>
+         )}
       </div>
     );
 };
 
-const DetailModal = ({ showDetail, ...props }) => {
-    if (!showDetail) return null;
-    const r = showDetail;
-    const { shortlist, toggleShortlist, room, addToSharedList, removeFromSharedList, handleSystemShare, sharedRestaurants, updateSharedItemStatus, userProfile } = props;
-    const isShortlisted = shortlist.some(item => item.id === r.id);
-    const isInSharedList = room && sharedRestaurants.some(item => item.id === r.id);
-    
-    // Ensure data is valid for rendering
-    let todayHours = r.todayHours;
-    if (!todayHours || typeof todayHours !== 'string') {
-        todayHours = "暫無資料";
-    }
+const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, executeSearch, loading, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, sortBy, setSortBy, errorMsg }) => (
+  <div className="p-6 space-y-8">
+     <div className="text-center mt-6">
+       <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-white shadow-xl mx-auto"><img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} className="w-full h-full object-cover" /></div>
+       <h1 className="text-3xl font-black text-stone-800">今天吃什麼</h1>
+     </div>
 
-    let displayOpeningHours = r.openingHours; 
-    // Compatibility check for new/legacy API data structure
-    if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) {
-        displayOpeningHours = r.regularOpeningHours.weekdayDescriptions;
-    }
-    
-    // Fallback if todayHours wasn't calculated in search but we have data
-    if (todayHours === "暫無資料" && Array.isArray(displayOpeningHours)) {
-       const day = new Date().getDay(); 
-       const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-       const todayStr = daysMap[day];
-       const todayInfo = displayOpeningHours.find(h => typeof h === 'string' && (h.includes(todayStr) || h.includes(todayStr.substring(0, 3)))); 
-       if (todayInfo) todayHours = todayInfo;
-    }
-
-    return (
-        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-right duration-300 font-rounded">
-          <div className="h-72 bg-stone-200 relative group">
-             <button onClick={() => props.setShowDetail(null)} className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-stone-800 shadow-sm z-10 hover:bg-white transition-colors"><ChevronLeft size={24} /></button>
-             <button onClick={() => handleSystemShare(r)} className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-teal-600 shadow-sm z-10 hover:bg-white transition-colors"><Share2 size={20} /></button>
-             <div className="w-full h-full flex items-center justify-center text-6xl text-stone-400 font-bold bg-gradient-to-b from-stone-100 to-stone-300 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover" /> : r.name.charAt(0)}</div>
-             <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/60 to-transparent"></div>
-             <div className="absolute bottom-4 left-4 text-white"><span className="bg-white/20 px-3 py-1 rounded-full text-xs backdrop-blur-md border border-white/30 font-bold tracking-wide">{r.type}</span></div>
-          </div>
-    
-          <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)] relative">
-            <div className="flex justify-between items-start mb-2">
-              <h2 className="text-2xl font-black text-stone-800 leading-tight flex-1 mr-2">{r.name}</h2>
-              <div className="flex flex-col items-end"><PriceDisplay level={r.priceLevel} /><span className={`text-[10px] mt-1 px-2 py-0.5 rounded-full font-bold ${r.isOpen ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{r.isOpen ? '營業中' : '休息中'}</span></div>
-            </div>
-            <div className="flex items-center gap-2 mb-6 text-sm"><StarRating rating={r.rating} /> <span className="text-stone-400 font-medium">({r.userRatingsTotal || 0} 則評論)</span></div>
-            <div className="bg-orange-50/50 p-4 rounded-2xl mb-6 text-xs text-stone-600 flex flex-col gap-2 border border-orange-100"><span className="font-bold flex items-center gap-2 text-orange-700 uppercase tracking-wider"><Clock size={14}/> 今日營業時間</span><span className="pl-6 text-sm font-medium">{todayHours.replace(/"/g, '')}</span></div>
-            
-            {isInSharedList && (
-                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 mb-6">
-                    <div className="text-xs font-bold text-stone-500 mb-2">你在共同清單中的評價</div>
-                    <div className="flex justify-between items-center">
-                         <div className="flex gap-2">
-                            <button onClick={() => updateSharedItemStatus(r.id, 'eaten', true)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${r.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-stone-200 text-stone-400'}`}><CheckCircle size={12}/> 吃過</button>
-                            <button onClick={() => updateSharedItemStatus(r.id, 'eaten', false)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${r.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-stone-200 text-stone-400'}`}><Circle size={12}/> 沒吃</button>
-                         </div>
-                         <InteractiveStarRating value={r.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(r.id, 'rating', val)} />
-                    </div>
-                </div>
-            )}
-    
-            <div className="space-y-4">
-               <div className="bg-stone-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-stone-100 transition-colors cursor-pointer group" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)}>
-                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-stone-400 shadow-sm group-hover:text-orange-500 transition-colors"><MapPin size={20} /></div>
-                 <div className="flex-1"><p className="text-sm font-bold text-stone-800">{r.address}</p><p className="text-xs text-stone-500 mt-0.5">距離 {r.distance} 公里</p></div>
-                 <ChevronLeft size={16} className="rotate-180 text-stone-300"/>
-               </div>
-            </div>
-          </div>
-    
-          <div className="p-4 border-t border-stone-200 flex gap-3 pb-8 bg-white safe-area-bottom">
-             <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}><Heart size={20} fill={isShortlisted ? "currentColor" : "none"} /></button>
-             {room ? (
-               <div className="flex-[3] flex gap-2">
-                   {isInSharedList ? (
-                       <button onClick={() => { removeFromSharedList(r); props.setShowDetail(null); }} className="flex-1 bg-white border-2 border-red-500 text-red-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><Trash2 size={16} /> 移出清單</button>
-                   ) : (
-                       <button onClick={() => { addToSharedList(r); props.setShowDetail(null); }} className="flex-1 bg-white border-2 border-orange-500 text-orange-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><List size={16} /> 加入清單</button>
-                   )}
-                   <button onClick={() => { props.setShowDetail(null); /* logic to chat */ }} className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-lg shadow-orange-200 hover:shadow-orange-300 transition-all active:scale-95 text-xs"><Send size={16} /> 傳到聊天室</button>
-               </div>
-             ) : (
-               <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.name)}&destination_place_id=${r.id}`)} className="flex-[3] bg-stone-800 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-stone-700 transition-all active:scale-95"><Navigation size={18}/> Google Maps 導航</button>
-             )}
-          </div>
+     {/* 新增：顯示錯誤訊息 */}
+     {errorMsg && (
+        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+            <AlertCircle size={18} className="flex-shrink-0"/>
+            <span>{errorMsg}</span>
         </div>
-      );
-};
+     )}
 
-const NavBar = ({ activeTab, setActiveTab }) => {
-  return (
-    <div className="h-24 bg-white/90 backdrop-blur-md border-t border-stone-200 flex items-center justify-around px-6 pb-6 fixed bottom-0 w-full max-w-md z-30 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
-      <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-stone-800 -translate-y-2' : 'text-stone-400 hover:text-stone-500'}`}><div className={`p-2 rounded-2xl transition-all ${activeTab === 'home' ? 'bg-stone-100 shadow-sm' : ''}`}><Home size={24} strokeWidth={activeTab === 'home' ? 2.5 : 2} /></div><span className="text-[10px] font-bold">搜尋</span></button>
-      <button onClick={() => setActiveTab('shortlist')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'shortlist' ? 'text-rose-500 -translate-y-2' : 'text-stone-400 hover:text-stone-500'}`}><div className={`p-2 rounded-2xl transition-all ${activeTab === 'shortlist' ? 'bg-rose-50 shadow-sm' : ''}`}><div className="relative"><Heart size={24} strokeWidth={activeTab === 'shortlist' ? 2.5 : 2} /></div></div><span className="text-[10px] font-bold">清單</span></button>
-      <button onClick={() => setActiveTab('social')} className={`flex flex-col items-center justify-center w-14 h-full space-y-1 transition-all duration-300 relative ${activeTab === 'social' ? 'text-teal-600 -translate-y-2' : 'text-stone-400 hover:text-stone-500'}`}><div className={`p-2 rounded-2xl transition-all ${activeTab === 'social' ? 'bg-teal-50 shadow-sm' : ''}`}><MessageCircle size={24} strokeWidth={activeTab === 'social' ? 2.5 : 2} /></div><span className="text-[10px] font-bold">揪團</span></button>
-    </div>
-  );
-};
-
-const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, virtualLocation, realLocation, timeFilter, setTimeFilter, distFilter, setDistFilter, ratingFilter, setRatingFilter, priceFilter, setPriceFilter, travelTimes, executeSearch, loading, sortBy, setSortBy }) => (
-  <div className="p-6 space-y-8 font-rounded bg-gradient-to-b from-stone-50 to-white min-h-full pb-32">
-     <style>{`@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap'); .font-rounded { font-family: 'Zen Maru Gothic', sans-serif; }`}</style>
-     <div className="text-center mt-6 flex flex-col items-center">
-       <div onClick={() => setShowProfileModal(true)} className="w-20 h-20 rounded-full overflow-hidden mb-4 border-4 border-white shadow-xl cursor-pointer relative group transition-transform hover:scale-105">
-           <img src={userProfile.customAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userProfile.name}`} alt="Profile" className="w-full h-full object-cover" />
-           <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Settings className="text-white" size={24}/></div>
-       </div>
-       <h1 className="text-3xl font-black text-stone-800 flex items-center justify-center gap-2 tracking-tight">今天吃什麼 <Utensils className="text-orange-500 fill-orange-500" /></h1>
-       <p className="text-stone-400 text-sm mt-1 font-medium">Hello, {userProfile.name}！想吃點什麼？</p>
+     <div className="bg-white p-5 rounded-3xl shadow-sm border cursor-pointer" onClick={() => setIsMapMode(true)}>
+       <div className="flex items-center gap-2"><MapPin size={16} className="text-orange-500"/> <span className="font-bold text-stone-700">設定搜尋位置</span></div>
+       <div className="text-xs text-stone-400 mt-1">{virtualLocation ? `${virtualLocation.lat.toFixed(4)}, ${virtualLocation.lng.toFixed(4)}` : "定位中..."}</div>
      </div>
-     <div className="bg-white p-5 rounded-3xl shadow-sm border border-stone-200 relative overflow-hidden group hover:shadow-md transition-shadow cursor-pointer" onClick={() => setIsMapMode(true)}>
-       <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-orange-400 to-red-400"></div>
-       <div className="flex justify-between items-center mb-3">
-           <label className="text-xs font-bold text-stone-400 flex items-center gap-1 uppercase tracking-wider"><MapPin size={12}/> 目前搜尋位置</label>
-           <span className="text-orange-500 text-xs font-bold bg-orange-50 px-2 py-0.5 rounded-full">點擊修改</span>
-       </div>
-       <div className="flex items-center gap-3">
-           <div className="flex-1">
-              <div className="text-lg font-bold text-stone-800 truncate tracking-tight">{virtualLocation === realLocation ? "📍 我的目前位置" : "🗺️ 自訂地圖位置"}</div>
-              <div className="text-xs text-stone-400 font-mono mt-1 opacity-60">{virtualLocation ? `${virtualLocation.lat.toFixed(4)}, ${virtualLocation.lng.toFixed(4)}` : "定位中..."}</div>
-           </div>
-       </div>
-     </div>
+     
+     {/* 篩選器介面 - 補回完整功能 */}
      <div className="space-y-5">
        <div className="space-y-2">
          <label className="text-sm font-bold text-stone-700 flex items-center gap-2"><Clock size={18} className="text-teal-500"/> 用餐時段</label>
@@ -988,7 +654,6 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
               </div>
            </div>
        </div>
-       
        <div className="space-y-2">
            <label className="text-sm font-bold text-stone-700 flex items-center gap-2"><DollarSign size={18} className="text-green-500"/> 價格</label>
            <div className="relative">
@@ -1002,7 +667,6 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
             <ChevronDown className="absolute right-3 top-3.5 text-stone-400 pointer-events-none" size={14} />
           </div>
        </div>
-
        <div className="flex gap-2 text-[10px] text-stone-500 font-bold bg-white/50 p-3 rounded-xl border border-stone-200 justify-around">
          <span className="flex items-center gap-1.5"><Footprints size={14} className="text-stone-400"/> 走 {travelTimes.walk} 分</span>
          <div className="w-px bg-stone-200 h-4 self-center"></div>
@@ -1011,8 +675,14 @@ const SearchPanelComponent = ({ userProfile, setShowProfileModal, setIsMapMode, 
          <span className="flex items-center gap-1.5"><Car size={14} className="text-stone-400"/> 開 {travelTimes.car} 分</span>
        </div>
      </div>
-     <button onClick={executeSearch} disabled={loading} className="w-full bg-stone-800 text-white py-4 rounded-2xl font-bold text-base shadow-lg shadow-stone-300 hover:bg-stone-700 active:scale-95 transition-all flex items-center justify-center gap-2">
-        {loading ? <span className="animate-spin">⌛</span> : <Search size={20} />} {loading ? "搜尋中..." : "開始搜尋"}
+
+     <button 
+        onClick={executeSearch} 
+        disabled={loading} 
+        className="w-full bg-stone-800 text-white py-4 rounded-2xl font-bold shadow-lg disabled:opacity-70 disabled:cursor-not-allowed transition-all active:scale-95 flex items-center justify-center gap-2"
+     >
+        {loading && <span className="animate-spin">⌛</span>}
+        {loading ? "搜尋中..." : "開始搜尋"}
      </button>
   </div>
 );
@@ -1026,16 +696,11 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                     <button onClick={() => setHasSearched(false)} className="flex items-center gap-1 text-stone-500 font-bold text-sm bg-white border border-stone-200 px-4 py-2 rounded-xl hover:bg-stone-50 transition-colors shadow-sm"><ArrowLeft size={16} /> 調整篩選</button>
                     <div className="text-xs text-stone-400 font-bold"><span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-md mr-1">{restaurants.length}</span> 間好選擇</div>
                 </div>
-                
                 {/* 排序功能 */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
                     <span className="text-xs font-bold text-stone-400 whitespace-nowrap"><Filter size={12} className="inline mr-1"/>排序:</span>
                     {[{id: 'default', label: '最佳'}, {id: 'distance', label: '距離近'}, {id: 'rating', label: '評分高'}, {id: 'price', label: '價格低'}].map(opt => (
-                        <button 
-                            key={opt.id}
-                            onClick={() => setSortBy(opt.id)} 
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors border ${sortBy === opt.id ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-500 border-stone-200'}`}
-                        >
+                        <button key={opt.id} onClick={() => setSortBy(opt.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors border ${sortBy === opt.id ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-500 border-stone-200'}`}>
                             {opt.label}
                         </button>
                     ))}
@@ -1049,31 +714,23 @@ const SearchResultsComponent = ({ setHasSearched, restaurants, loading, errorMsg
                     {errorMsg && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 border border-red-100"><AlertCircle size={18} /> <span className="whitespace-pre-line text-left">{errorMsg}</span></div>}
                     {restaurants.map(r => (
                         <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-stone-200 shadow-sm active:scale-[0.98] transition-transform flex gap-3 cursor-pointer group hover:border-orange-200">
-                            <div className="w-20 h-20 bg-stone-100 rounded-xl flex-shrink-0 overflow-hidden">
-                                {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-2xl text-stone-300 font-bold">{r.name.charAt(0)}</div>}
-                            </div>
+                            <div className="w-20 h-20 bg-stone-100 rounded-xl flex-shrink-0 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-2xl text-stone-300 font-bold">{r.name.charAt(0)}</div>}</div>
                             <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                                 <div>
                                     <h4 className="font-bold text-stone-800 truncate">{r.name}</h4>
                                     <div className="flex items-center gap-2 mt-1 text-xs">
                                         <span className="text-stone-400 bg-stone-50 px-1.5 py-0.5 rounded truncate max-w-[80px]">{r.type}</span>
                                         <span className="text-orange-500 font-bold flex items-center gap-0.5"><MapPin size={10}/> {r.distance}km</span>
-                                        {r.isOpen === true ? 
-                                            <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold">營業中</span> 
-                                            : r.isOpen === false ?
-                                            <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">休息</span>
-                                            : null
-                                        }
+                                        {/* 營業時間顯示修正：優先顯示 Today Hours */}
+                                        {r.todayHours ? (
+                                            <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold truncate max-w-[120px]">{r.todayHours}</span>
+                                        ) : (
+                                            r.isOpen === true ? <span className="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded font-bold">營業中</span> : 
+                                            r.isOpen === false ? <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">休息</span> : 
+                                            <span className="text-[10px] text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">查看時間</span>
+                                        )}
                                     </div>
                                 </div>
-                                
-                                {r.todayHours && (
-                                    <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-stone-500 bg-stone-50 px-2 py-1 rounded-md border border-stone-100 w-fit">
-                                        <Clock size={10} className="text-stone-400"/>
-                                        <span className="truncate max-w-[150px] font-medium">{r.todayHours}</span>
-                                    </div>
-                                )}
-
                                 <div className="flex justify-between items-end mt-1">
                                     <div className="flex gap-1.5 items-center"><StarRating rating={r.rating} /><PriceDisplay level={r.priceLevel} /></div>
                                     <button onClick={(e) => toggleShortlist(e, r)} className={`p-2 rounded-full transition-colors ${shortlist.some(item => item.id === r.id) ? 'bg-rose-50 text-rose-500' : 'bg-stone-50 text-stone-300 hover:bg-stone-100'}`}><Heart size={16} fill={shortlist.some(item => item.id === r.id) ? "currentColor" : "none"} /></button>
@@ -1194,19 +851,12 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
                         {filteredList.map(r => (
                             <div key={r.id} onClick={() => setShowDetail(r)} className="bg-white p-3 rounded-2xl border border-stone-200 shadow-sm flex justify-between items-center active:scale-[0.98] transition-transform">
                                 <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center font-bold text-stone-400 overflow-hidden shadow-inner">
-                                        {r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}
-                                    </div>
+                                    <div className="w-12 h-12 bg-stone-100 rounded-xl flex items-center justify-center font-bold text-stone-400 overflow-hidden shadow-inner">{r.photoUrl ? <img src={r.photoUrl} alt={r.name} className="w-full h-full object-cover" /> : r.name.charAt(0)}</div>
                                     <div>
                                         <h4 className="font-bold text-stone-800 text-sm truncate max-w-[140px]">{r.name}</h4>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <button onClick={(e) => handleEditCategory(e, r)} className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-stone-200 transition-colors">
-                                               {r.customCategory || r.type} <Edit2 size={10} className="opacity-50"/>
-                                            </button>
-                                            <div className="text-[10px] text-stone-400 flex gap-1 font-bold">
-                                                <span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span>
-                                                <span>{r.distance}km</span>
-                                            </div>
+                                            <button onClick={(e) => handleEditCategory(e, r)} className="text-[10px] text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded flex items-center gap-1 hover:bg-stone-200 transition-colors">{r.customCategory || r.type} <Edit2 size={10} className="opacity-50"/></button>
+                                            <div className="text-[10px] text-stone-400 flex gap-1 font-bold"><span className="flex items-center gap-0.5"><Star size={10} className="text-yellow-400 fill-yellow-400"/> {r.rating}</span><span>{r.distance}km</span></div>
                                         </div>
                                     </div>
                                 </div>
@@ -1223,8 +873,81 @@ const ShortlistScreenComponent = ({ shortlist, setActiveTab, aiAnalysis, setAiAn
     );
 };
 
-// --- App Component ---
+// --- DetailModal (Restored and Placed Before App) ---
+const DetailModal = ({ showDetail, ...props }) => {
+    if (!showDetail) return null;
+    const r = showDetail;
+    const { shortlist, toggleShortlist, room, addToSharedList, removeFromSharedList, handleSystemShare, sharedRestaurants, updateSharedItemStatus, userProfile } = props;
+    const isShortlisted = shortlist.some(item => item.id === r.id);
+    const isInSharedList = room && sharedRestaurants.some(item => item.id === r.id);
+    let todayHours = r.todayHours;
+    if (!todayHours || typeof todayHours !== 'string') { todayHours = "暫無資料"; }
+    let displayOpeningHours = r.openingHours; 
+    if(r.regularOpeningHours && r.regularOpeningHours.weekdayDescriptions) { displayOpeningHours = r.regularOpeningHours.weekdayDescriptions; }
+    if (todayHours === "暫無資料" && Array.isArray(displayOpeningHours)) {
+       const day = new Date().getDay(); 
+       const daysMap = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+       const todayStr = daysMap[day];
+       const todayInfo = displayOpeningHours.find(h => typeof h === 'string' && (h.includes(todayStr) || h.includes(todayStr.substring(0, 3)))); 
+       if (todayInfo) todayHours = todayInfo;
+    }
 
+    return (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in slide-in-from-right duration-300 font-rounded">
+          <div className="h-72 bg-stone-200 relative group">
+             <button onClick={() => props.setShowDetail(null)} className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-stone-800 shadow-sm z-10 hover:bg-white transition-colors"><ChevronLeft size={24} /></button>
+             <button onClick={() => handleSystemShare(r)} className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-teal-600 shadow-sm z-10 hover:bg-white transition-colors"><Share2 size={20} /></button>
+             <div className="w-full h-full flex items-center justify-center text-6xl text-stone-400 font-bold bg-gradient-to-b from-stone-100 to-stone-300 overflow-hidden">{r.photoUrl ? <img src={r.photoUrl} className="w-full h-full object-cover" /> : r.name.charAt(0)}</div>
+             <div className="absolute bottom-0 left-0 w-full h-24 bg-gradient-to-t from-black/60 to-transparent"></div>
+             <div className="absolute bottom-4 left-4 text-white"><span className="bg-white/20 px-3 py-1 rounded-full text-xs backdrop-blur-md border border-white/30 font-bold tracking-wide">{r.type}</span></div>
+          </div>
+          <div className="flex-1 p-6 -mt-6 bg-white rounded-t-3xl overflow-y-auto shadow-[0_-5px_20px_rgba(0,0,0,0.1)] relative">
+            <div className="flex justify-between items-start mb-2">
+              <h2 className="text-2xl font-black text-stone-800 leading-tight flex-1 mr-2">{r.name}</h2>
+              <div className="flex flex-col items-end"><PriceDisplay level={r.priceLevel} /><span className={`text-[10px] mt-1 px-2 py-0.5 rounded-full font-bold ${r.isOpen ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>{r.isOpen ? '營業中' : '休息中'}</span></div>
+            </div>
+            <div className="flex items-center gap-2 mb-6 text-sm"><StarRating rating={r.rating} /> <span className="text-stone-400 font-medium">({r.userRatingsTotal || 0} 則評論)</span></div>
+            <div className="bg-orange-50/50 p-4 rounded-2xl mb-6 text-xs text-stone-600 flex flex-col gap-2 border border-orange-100"><span className="font-bold flex items-center gap-2 text-orange-700 uppercase tracking-wider"><Clock size={14}/> 今日營業時間</span><span className="pl-6 text-sm font-medium">{todayHours.replace(/"/g, '')}</span></div>
+            {isInSharedList && (
+                <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 mb-6">
+                    <div className="text-xs font-bold text-stone-500 mb-2">你在共同清單中的評價</div>
+                    <div className="flex justify-between items-center">
+                         <div className="flex gap-2">
+                            <button onClick={() => updateSharedItemStatus(r.id, 'eaten', true)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${r.eatenStatus?.[userProfile.name] ? 'bg-green-100 text-green-700' : 'bg-white border border-stone-200 text-stone-400'}`}><CheckCircle size={12}/> 吃過</button>
+                            <button onClick={() => updateSharedItemStatus(r.id, 'eaten', false)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors ${r.eatenStatus?.[userProfile.name] === false ? 'bg-orange-100 text-orange-700' : 'bg-white border border-stone-200 text-stone-400'}`}><Circle size={12}/> 沒吃</button>
+                         </div>
+                         <InteractiveStarRating value={r.ratings?.[userProfile.name] || 0} onChange={(val) => updateSharedItemStatus(r.id, 'rating', val)} />
+                    </div>
+                </div>
+            )}
+            <div className="space-y-4">
+               <div className="bg-stone-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-stone-100 transition-colors cursor-pointer group" onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(r.name)}`)}>
+                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-stone-400 shadow-sm group-hover:text-orange-500 transition-colors"><MapPin size={20} /></div>
+                 <div className="flex-1"><p className="text-sm font-bold text-stone-800">{r.address}</p><p className="text-xs text-stone-500 mt-0.5">距離 {r.distance} 公里</p></div>
+                 <ChevronLeft size={16} className="rotate-180 text-stone-300"/>
+               </div>
+            </div>
+          </div>
+          <div className="p-4 border-t border-stone-200 flex gap-3 pb-8 bg-white safe-area-bottom">
+             <button onClick={(e) => toggleShortlist(e, r)} className={`flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${isShortlisted ? 'bg-rose-50 text-rose-500 border-2 border-rose-100' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`}><Heart size={20} fill={isShortlisted ? "currentColor" : "none"} /></button>
+             {room ? (
+               <div className="flex-[3] flex gap-2">
+                   {isInSharedList ? (
+                       <button onClick={() => { removeFromSharedList(r); props.setShowDetail(null); }} className="flex-1 bg-white border-2 border-red-500 text-red-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><Trash2 size={16} /> 移出清單</button>
+                   ) : (
+                       <button onClick={() => { addToSharedList(r); props.setShowDetail(null); }} className="flex-1 bg-white border-2 border-orange-500 text-orange-600 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-sm active:scale-95 text-xs"><List size={16} /> 加入清單</button>
+                   )}
+                   <button onClick={() => { props.setShowDetail(null); /* logic to chat */ }} className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-lg shadow-orange-200 hover:shadow-orange-300 transition-all active:scale-95 text-xs"><Send size={16} /> 傳到聊天室</button>
+               </div>
+             ) : (
+               <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.name)}&destination_place_id=${r.id}`)} className="flex-[3] bg-stone-800 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-stone-700 transition-all active:scale-95"><Navigation size={18}/> Google Maps 導航</button>
+             )}
+          </div>
+        </div>
+      );
+};
+
+// --- Main App Component ---
 export default function App() {
   const [activeTab, setActiveTab] = useState('home'); 
   const [loading, setLoading] = useState(false);
@@ -1236,83 +959,59 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [room, setRoom] = useState(null); 
   const [messages, setMessages] = useState([]); 
-  const [timeFilter, setTimeFilter] = useState('lunch'); 
-  const [distFilter, setDistFilter] = useState(500); 
-  const [ratingFilter, setRatingFilter] = useState('all');
-  const [priceFilter, setPriceFilter] = useState('all'); 
-  const [hasSearched, setHasSearched] = useState(false);
-  const [travelTimes, setTravelTimes] = useState(calculateTravelTime(500));
   const [restaurants, setRestaurants] = useState([]);
   const [shortlist, setShortlist] = useState([]); 
-  const [isGoogleMapsReady, setIsGoogleMapsReady] = useState(false);
   const [showDetail, setShowDetail] = useState(null);
-  const isSearchingRef = useRef(false);
   const [myRooms, setMyRooms] = useState([]);
-  const [aiAnalysis, setAiAnalysis] = useState("");
-  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [sharedRestaurants, setSharedRestaurants] = useState([]); 
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [authError, setAuthError] = useState(firebaseErrorMsg);
   
   // 新增：排序狀態
   const [sortBy, setSortBy] = useState('default');
+  
+  // Filters State for SearchPanelComponent (Restored)
+  const [timeFilter, setTimeFilter] = useState('lunch'); 
+  const [distFilter, setDistFilter] = useState(500); 
+  const [ratingFilter, setRatingFilter] = useState('all');
+  const [priceFilter, setPriceFilter] = useState('all');
+  const [travelTimes, setTravelTimes] = useState(calculateTravelTime(500));
+  const [hasSearched, setHasSearched] = useState(false);
+  
+  // AI States (Restored)
+  const [aiAnalysis, setAiAnalysis] = useState("");
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  
+  // Add permission error state
+  const [permissionError, setPermissionError] = useState(null);
 
   // Firebase Auth
   useEffect(() => {
     if (firebaseErrorMsg) return; 
 
     const initAuth = async () => {
-      if (!auth) {
-          setAuthError("Firebase Auth 服務未初始化");
-          return;
-      }
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-            await signInAnonymously(auth);
+      if (!auth) { setAuthError("Auth Init Failed"); return; }
+      try { await signInAnonymously(auth); } catch (e) { 
+        console.error(e); 
+        let msg = e.message;
+        if (e.code === 'auth/configuration-not-found' || e.code === 'auth/operation-not-allowed' || e.code === 'auth/admin-restricted-operation') {
+            msg = "auth/configuration-not-found";
         }
-      } catch (e) {
-        console.error("Auth Error:", e);
-        setAuthError(typeof e === 'string' ? e : e.message);
+        setAuthError(msg); 
       }
     };
     initAuth();
-    
-    if (auth) {
-        return onAuthStateChanged(auth, (u) => setFirebaseUser(u));
-    }
+    if (auth) return onAuthStateChanged(auth, (u) => setFirebaseUser(u));
   }, []);
 
   useEffect(() => {
-    // Geo Init
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
-          setRealLocation(loc);
-          setVirtualLocation(loc);
-        },
-        () => {
-          const defaultLoc = { lat: 25.0330, lng: 121.5654 }; // Taipei
-          setRealLocation(defaultLoc);
-          setVirtualLocation(defaultLoc);
-        }
+        (p) => { const loc = { lat: p.coords.latitude, lng: p.coords.longitude }; setRealLocation(loc); setVirtualLocation(loc); },
+        () => { const def = { lat: 25.0330, lng: 121.5654 }; setRealLocation(def); setVirtualLocation(def); }
       );
-    } else {
-      const defaultLoc = { lat: 25.0330, lng: 121.5654 };
-      setRealLocation(defaultLoc);
-      setVirtualLocation(defaultLoc);
     }
-
-    if (GOOGLE_MAPS_API_KEY) {
-      loadGoogleMapsScript(GOOGLE_MAPS_API_KEY)
-        .then(() => setIsGoogleMapsReady(true))
-        .catch(err => {
-          console.error("Google Maps Load Failed", err);
-          setErrorMsg("無法載入 Google Maps，請檢查 API Key 設置。");
-        });
-    }
+    if (GOOGLE_MAPS_API_KEY) loadGoogleMapsScript(GOOGLE_MAPS_API_KEY).catch(e => console.error(e));
   }, []);
 
   useEffect(() => { setTravelTimes(calculateTravelTime(distFilter)); }, [distFilter]);
@@ -1320,12 +1019,20 @@ export default function App() {
   // Load My Rooms
   useEffect(() => {
       if(db && userProfile.name && firebaseUser) {
-          const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms"), where("members", "array-contains", userProfile.name)); 
+          // 自動切換路徑
+          const q = query(getSmartCollection(db, "rooms"), where("members", "array-contains", userProfile.name)); 
           const unsubscribe = onSnapshot(q, (snapshot) => {
               const rooms = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
               rooms.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); 
               setMyRooms(rooms);
-          }, (error) => console.error("Room fetch error:", error));
+          }, (error) => {
+              console.warn("Room fetch error:", error);
+              if (error.code === 'permission-denied') {
+                  setPermissionError("Firestore 權限不足。請檢查 Firebase Console > Firestore Database > Rules。");
+              } else {
+                  console.warn(error.message);
+              }
+          });
           return () => unsubscribe();
       }
   }, [userProfile.name, firebaseUser]);
@@ -1333,12 +1040,18 @@ export default function App() {
   // Load Shared Restaurants for Current Room
   useEffect(() => {
       if (!db || !room?.id || !firebaseUser) return;
-      const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants")); 
+      // 自動切換路徑
+      const q = query(getSmartCollection(db, "rooms", room.id, "shared_restaurants")); 
       const unsubscribe = onSnapshot(q, (snapshot) => {
           const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
           list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)); 
           setSharedRestaurants(list);
-      }, (error) => console.error("Shared restaurants error:", error));
+      }, (error) => {
+          console.warn("Shared restaurants error:", error);
+          if (error.code === 'permission-denied') {
+              setPermissionError("Firestore 權限不足");
+          }
+      });
       return () => unsubscribe();
   }, [room?.id, firebaseUser]);
 
@@ -1348,18 +1061,19 @@ export default function App() {
           if(!room) setMessages([]); // 離開房間清空訊息
           return;
       }
-      const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "messages"), orderBy("createdAt", "asc")); 
+      // 自動切換路徑
+      const q = query(getSmartCollection(db, "rooms", room.id, "messages"), orderBy("createdAt", "asc")); 
       const unsubscribe = onSnapshot(q, (snapshot) => {
           const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
           setMessages(msgs);
-      }, (error) => console.error("Messages error:", error));
+      }, (error) => console.warn("Messages error:", error));
       return () => unsubscribe();
   }, [room?.id, firebaseUser]);
 
   // Define updateSharedItemStatus here at App level so it can be passed down
   const updateSharedItemStatus = async (itemId, type, value) => {
       if (!db || !room?.id || !firebaseUser) return;
-      const ref = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", itemId);
+      const ref = getSmartDoc(db, "rooms", room.id, "shared_restaurants", itemId);
       try { 
           if (type === 'rating') await updateDoc(ref, { [`ratings.${userProfile.name}`]: value }); 
           else if (type === 'eaten') await updateDoc(ref, { [`eatenStatus.${userProfile.name}`]: value }); 
@@ -1383,7 +1097,8 @@ export default function App() {
              };
         }
 
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", restaurant.id);
+        // 自動切換路徑
+        const docRef = getSmartDoc(db, "rooms", room.id, "shared_restaurants", restaurant.id);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
@@ -1422,7 +1137,8 @@ export default function App() {
   const addRestaurantToRoom = async (targetRoomId, restaurant) => {
     if (!db || !firebaseUser) return;
     try {
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', "rooms", targetRoomId, "shared_restaurants", restaurant.id);
+        // 自動切換路徑
+        const docRef = getSmartDoc(db, "rooms", targetRoomId, "shared_restaurants", restaurant.id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
              alert(`「${restaurant.name}」已經在該房間的清單中囉！`);
@@ -1463,7 +1179,8 @@ export default function App() {
      if (!db || !room || !firebaseUser) return;
      if (!confirm("確定要從共同清單中移除這間餐廳嗎？")) return;
      try {
-         await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", room.id, "shared_restaurants", restaurant.id));
+         // 自動切換路徑
+         await deleteDoc(getSmartDoc(db, "rooms", room.id, "shared_restaurants", restaurant.id));
      } catch (e) {
          console.error("Remove Error:", e);
          alert("移除失敗");
@@ -1641,118 +1358,19 @@ export default function App() {
     });
   };
 
-  // NEW: Update category in shortlist
-  const updateShortlistCategory = (id, newCategory) => {
-      setShortlist(prev => prev.map(item => 
-          item.id === id ? { ...item, customCategory: newCategory } : item
-      ));
-  };
-
+  // --- Move handleSystemShare HERE ---
   const handleSystemShare = (restaurant) => {
     const text = `我們吃這家：${restaurant.name}\n📍 ${restaurant.address}\n⭐ ${restaurant.rating}\nGoogle Map: https://maps.google.com/?q=${encodeURIComponent(restaurant.name)}`;
     if (navigator.share) navigator.share({ title: '今天吃什麼？', text }).catch(console.error);
     else { navigator.clipboard.writeText(text); alert("已複製！"); }
   };
 
-  // Join Room logic
-  const onJoinRoom = async (code) => {
-      if (code.length !== 4) return alert("請輸入 4 位數代碼");
-      if (db && firebaseUser) {
-        try {
-          const q = query(collection(db, 'artifacts', appId, 'public', 'data', "rooms"), where("code", "==", code));
-          const querySnapshot = await getDocs(q);
-          if (!querySnapshot.empty) {
-            const docData = querySnapshot.docs[0];
-            const roomData = { id: docData.id, ...docData.data() };
-            if(!roomData.members.includes(userProfile.name)) {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", docData.id), { members: arrayUnion(userProfile.name) });
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms", docData.id, "messages"), {
-                    sender: 'System', text: `${userProfile.name} 加入了房間！`, type: 'system', createdAt: new Date()
-                });
-            }
-            setRoom(roomData);
-            setActiveTab('social');
-          } else {
-            alert("找不到此房間代碼！");
-          }
-        } catch (e) {
-          alert(`加入失敗：${e.message}`);
-        }
-      }
-  };
-
-  const onCreateRoom = async () => {
-      const code = Math.floor(1000 + Math.random() * 9000).toString();
-      const roomName = `${userProfile.name} 的美食團`;
-      if (db && firebaseUser) {
-        try {
-          const roomRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms"), {
-            code: code, name: roomName, createdAt: new Date(), members: [userProfile.name]
-          });
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', "rooms", roomRef.id, "messages"), {
-            sender: 'System', text: `歡迎來到「${roomName}」！代碼：${code}`, type: 'system', createdAt: new Date()
-          });
-          setRoom({ id: roomRef.id, code, name: roomName });
-          setActiveTab('social');
-        } catch (e) {
-          alert(`建立房間失敗：${e.message}`);
-        }
-      } else {
-          const newRoom = { id: "local", code, name: roomName, members: [userProfile.name] };
-          setRoom(newRoom);
-          setActiveTab('social');
-      }
-  };
-
-  const onDeleteRoom = async (roomId) => {
-      if (!confirm("確定要刪除這個房間嗎？\n注意：這將會移除所有人的聊天記錄與清單。")) return;
-      if (db && firebaseUser) {
-          try {
-              await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', "rooms", roomId));
-          } catch (e) {
-              console.error("刪除失敗", e);
-              alert("刪除失敗");
-          }
-      } else {
-           setMyRooms(prev => prev.filter(r => r.id !== roomId));
-      }
-  };
-
-  const handleAiGroupAnalysis = async () => {
-    if (shortlist.length === 0) {
-      alert("候選清單是空的，無法進行分析喔！");
-      return;
-    }
-
-    setIsAiAnalyzing(true);
-    setAiAnalysis(""); 
-
-    try {
-      // 準備給 AI 的提示詞
-      const restaurantNames = shortlist.map(r => r.name).join(", ");
-      const prompt = `我們現在有這些餐廳候選名單：${restaurantNames}。
-請用幽默、有點毒舌但又中肯的語氣，幫我們分析這些選擇，並根據餐廳類型、口味多樣性給出建議。
-最後請推薦一個「大家最可能滿意」的選擇，並給出理由。字數控制在 200 字以內。`;
-
-      // 呼叫 Gemini
-      const result = await callGemini(prompt);
-      setAiAnalysis(result);
-    } catch (error) {
-      console.error("AI Analysis Error:", error);
-      setAiAnalysis("AI 分析暫時無法使用，請稍後再試。");
-    } finally {
-      setIsAiAnalyzing(false);
-    }
-  };
-
-  if (authError) {
+  if (authError && !authError.includes("auth/configuration-not-found")) {
       return (
           <div className="h-screen flex flex-col items-center justify-center p-6 bg-stone-50 text-center font-rounded">
               <AlertCircle size={48} className="text-red-500 mb-4" />
               <h2 className="text-xl font-black text-stone-800 mb-2">發生錯誤</h2>
-              {/* Ensure we only render string here */}
-              <p className="text-stone-500 text-sm mb-4">{typeof authError === 'string' ? authError : '未知錯誤，請檢查 Firebase 設定'}</p>
-              <p className="text-xs text-stone-400 bg-stone-100 p-2 rounded max-w-xs">如果您是在本機開發，請檢查 Firebase Config 是否正確設定。</p>
+              <p className="text-stone-500 text-sm mb-4 max-w-md mx-auto">{typeof authError === 'string' ? authError : '未知錯誤'}</p>
           </div>
       );
   }
@@ -1783,6 +1401,7 @@ export default function App() {
             loading={loading}
             sortBy={sortBy}
             setSortBy={setSortBy}
+            errorMsg={errorMsg} 
           />
         ) : (
           <SearchResultsComponent 
@@ -1842,10 +1461,24 @@ export default function App() {
                     onEnterRoom={(r) => setRoom(r)}
                     setShowProfileModal={setShowProfileModal}
                     onDeleteRoom={onDeleteRoom}
+                    permissionError={permissionError}
                 />
             )
         )}
       </div>
+       
+       {permissionError && (
+           <div className="fixed top-0 left-0 right-0 z-50 bg-amber-100 border-b border-amber-300 text-amber-800 px-4 py-2 text-xs flex justify-between items-center shadow-md animate-in slide-in-from-top">
+               <div className="flex items-center gap-2">
+                   <AlertTriangle size={14} />
+                   <span>{permissionError}</span>
+               </div>
+               <div className="flex items-center gap-2">
+                 <div className="bg-white border border-amber-200 px-2 py-0.5 rounded text-[10px] font-mono select-all">allow read, write: if true;</div>
+                 <button onClick={() => setPermissionError(null)}><X size={14}/></button>
+               </div>
+           </div>
+       )}
 
       {!room && <NavBar activeTab={activeTab} setActiveTab={setActiveTab} />}
       
